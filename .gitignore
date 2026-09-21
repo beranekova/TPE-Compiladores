@@ -1,0 +1,13 @@
+# Caché de Python
+__pycache__/
+*.py[cod]
+
+#Archivos de depuración del parser
+parser.out
+
+# Entorno virtual de Python
+venv/
+.venv/
+
+# Archivos locales del editor
+.vscode/

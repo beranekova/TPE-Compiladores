@@ -1,0 +1,164 @@
+programa_prueba
+
+{{ ============================================================
+   DECLARACIONES CORRECTAS
+   ============================================================ }}
+
+ushortint a, b;
+doublef c;
+
+{{ Tema 23 }}
+typedef mi_tipo = [1$us, 2$us, 3$us];
+
+{{ Tema 25 + Tema 30 }}
+class ca
+begin
+    extends cb, cc;
+    ushortint x;
+
+    ushortint m(ushortint pa)
+    begin
+        ret pa;
+    end;
+end;
+
+{{ Función correcta }}
+ushortint function f1(ushortint x, doublef y)
+    ushortint z;
+begin
+    z := x;
+    ret z;
+end;
+
+{{ Tema 25: Clase sin contenido }}
+class clase_vacia
+begin
+end;
+
+{{ ============================================================
+   ERRORES EN DECLARACIONES
+   ============================================================ }}
+
+{{ ERROR: falta "," en declaración de variables }}
+ushortint x y;
+
+{{ ERROR: falta nombre de parámetro formal }}
+ushortint function f2(ushortint)
+begin
+    ret a;
+end;
+
+{{ ERROR: falta tipo de parámetro formal }}
+ushortint function f3(x)
+begin
+    ret a;
+end;
+
+{{ Tema 23: enumeración sin valores }}
+typedef otro_tipo = [];
+
+
+{{ Tema 30: extends sin nombre/lista de clases }}
+class clase_sin_padre
+begin
+    extends;
+    ushortint x;
+end;
+
+
+{{ --- BLOQUES EJECUTABLES --- }}
+
+begin
+
+    {{ Tema 2 }}
+    a := 10$us;
+
+    x := -5.5d-1 * 2.0 - -3.14d-2;
+    
+    {{ Tema 8 }}
+    c := 2.5;
+    c := .6;
+    c := 3.0d-5;
+
+    {{ Tema 9 }}
+    pout('hola');
+
+    {{ Tema 13 }}
+    repeat
+    begin
+        a := a + 1$us;
+    end
+    while (a < 100$us);
+
+    {{ Tema 18 }}
+    a := b = 2$us + 3$us * 5$us;
+
+    {{ Tema 20 }}
+    a := f1(a, c) [2$us, 1$us];
+
+    {{ Tema 29 }}
+    ca[0$us] := 15$us;
+
+    {{ Tema 33 }}
+    c := todf(a);
+
+    {{ ========================================================
+       ERRORES EN EJECUTABLES
+       ======================================================== }}
+
+    {{ ERROR: falta ";" al final de sentencia }}
+    a := 10$us
+
+    {{ ERROR: falta operando en expresión }}
+    a := b + ;
+
+    {{ ERROR: falta operador en expresión }}
+    a := b 2$us;
+
+    {{ ERROR: falta argumento en pout }}
+    pout();
+
+    {{ ERROR: falta paréntesis de apertura en condición }}
+    if a > b)
+    begin
+        a := 1$us;
+    end
+    end_if;
+
+    {{ ERROR: falta paréntesis de cierre en condición }}
+    if (a > b
+    begin
+        a := 1$us;
+    end
+    end_if;
+
+    {{ ERROR: falta cuerpo en iteración }}
+    repeat
+    while (a < b);
+
+    {{ ERROR: falta end_if }}
+    if (a > b)
+    begin
+        a := 1$us;
+    end;
+
+    {{ Tema 13: falta while }}
+    repeat
+    begin
+        a := a + 1$us;
+    end
+    (a < 100$us);
+
+    {{ Tema 18: uso de := donde corresponde = }}
+    a := b := 2$us;
+
+    {{ Tema 20: falta orden de evaluación/asignación }}
+    a := f1(a, c);
+
+    {{ Tema 29: acceso posicional sin índice }}
+    ca[] := 15$us;
+
+    {{ Tema 33: todf sin expresión }}
+    c := todf();
+
+end
