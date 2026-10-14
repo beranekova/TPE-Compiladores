@@ -31,7 +31,66 @@ class TablaSimbolos:
         return self.tabla.get(clave, None)
 
     def imprimir(self):
-        print("\n" + "="*40)
-        print("          TABLA DE SÍMBOLOS")
-        print("="*40)
-        print(json.dumps(self.tabla, indent=4))
+        print("\n" + "=" * 90)
+        print(" " * 30 + "TABLA DE SÍMBOLOS")
+        print("=" * 90)
+
+        # Encabezados
+        columnas = ("TOKEN", "LEXEMA", "ATRIBUTOS")
+
+        # Extraer los datos de la tabla de símbolos
+        filas = []
+
+        for simbolo, datos in self.tabla.items():
+            token = datos.get("token", "")
+            lexema = datos.get("lexema", "")
+
+            # Obtener los atributos adicionales, excluyendo token y lexema
+            atributos = {
+                clave: valor
+                for clave, valor in datos.items()
+                if clave not in ("token", "lexema")
+            }
+
+            # Mostrar los atributos en una sola columna
+            texto_atributos = (
+                ", ".join(f"{clave}: {valor}" for clave, valor in atributos.items())
+                if atributos
+                else "—"
+            )
+
+            filas.append((token, lexema, texto_atributos))
+
+        # Calcular el ancho necesario para cada columna
+        anchos = [
+            max(len(columnas[i]), *(len(fila[i]) for fila in filas))
+            for i in range(len(columnas))
+        ]
+
+        # Dibujar los bordes de la tabla
+        def borde(izquierda, union, derecha, horizontal="─"):
+            return (
+                izquierda
+                + union.join(horizontal * (ancho + 2) for ancho in anchos)
+                + derecha
+            )
+
+        def imprimir_fila(fila):
+            print(
+                "│"
+                + "│".join(
+                    f" {valor:<{ancho}} "
+                    for valor, ancho in zip(fila, anchos)
+                )
+                + "│"
+            )
+
+        print(borde("┌", "┬", "┐"))
+        imprimir_fila(columnas)
+        print(borde("├", "┼", "┤"))
+
+        for fila in filas:
+            imprimir_fila(fila)
+
+        print(borde("└", "┴", "┘"))
+        print(f"Total de símbolos: {len(filas)}")
