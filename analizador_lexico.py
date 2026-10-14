@@ -1,12 +1,23 @@
-from sly import Lexer
 import sys
+import json
+from sly import Lexer, Parser
+from pprint import pprint
 from tabla_simbolos import TablaSimbolos
+
+# =========================================================================
+# ANALIZADOR LÉXICO
+# =========================================================================
 
 class analizador_lexico(Lexer):
 
     def __init__(self):
         super().__init__()
         self.ts = TablaSimbolos()
+        self.errores = 0
+    
+    def reportar_error(self, mensaje):
+        print(mensaje)
+        self.errores += 1
 
     tokens = {ID, CTE_USHORTINT, CTE_DOUBLEF, CADENA,
     ASIGNACION_PUNTO, ASIGNACION_IGUAL, IGUAL, DISTINTO, MAYOR_IGUAL, MENOR_IGUAL, 
@@ -27,6 +38,7 @@ class analizador_lexico(Lexer):
     @_(r'\n+')
     def ignore_salto_linea(self, t):
         self.lineno += len(t.value)
+        self.es_inicio = False
 
     ASIGNACION_PUNTO = r':='
     IGUAL            = r'==' 
@@ -59,11 +71,12 @@ class analizador_lexico(Lexer):
             return t
 
         if t.value != lexema:
-            print(f"Error Lexico: Identificador invalido'{t.value}'. Debe ser en minusculas. Línea {self.lineno}")
+            self.reportar_error(f"Error Lexico: Identificador invalido en linea {self.lineno}. Debe ser en minusculas.")
             return None
 
         if len(t.value) > 22:
-            print(f"WARNING: Se trunco el identificador '{t.value}'. Debe tener maximo 22 caracteres. Línea {self.lineno}")
+            # Los warnings no usan reportar_error para no hacer fallar la compilacion final
+            print(f"WARNING: Se trunco el identificador en linea {self.lineno}. Maximo 22 caracteres.")
             t.value = t.value[:22]
 
         self.ts.insertar(t.value, "ID")
@@ -82,17 +95,17 @@ class analizador_lexico(Lexer):
         val_str = t.value.replace('d', 'e')
         try:
             val = float(val_str)
-            if val == 0.0 or (2.2250738585072014e-308 <= val <= 1.7976931348623157e+308):
+            if (val == 0.0) or (2.2250738585072014e-308 <= val <= 1.7976931348623157e+308):
                 self.ts.insertar(t.value, "CTE_DOUBLEF", valor=val)
                 t.value = self.ts.obtener(t.value, "CTE_DOUBLEF")
                 return t
             else:
-                print(f"Error Léxico: DOUBLEF fuera de rango en línea {self.lineno}")
+                self.reportar_error(f"Error Léxico: DOUBLEF fuera de rango en línea {self.lineno}")
                 return None
         except ValueError:
-            print(f"Error Léxico: DOUBLEF inválido en línea {self.lineno}")
+            self.reportar_error(f"Error Léxico: DOUBLEF inválido en línea {self.lineno}")
             return None
-    
+
     @_(r'\d+\$us')
     def CTE_USHORTINT(self, t):
         val = int(t.value[:-3]) 
@@ -101,19 +114,18 @@ class analizador_lexico(Lexer):
             t.value = self.ts.obtener(t.value, "CTE_USHORTINT")
             return t
         else:
-            print(f"Error Léxico: USHORTINT fuera de rango ({t.value}) en línea {self.lineno}")
+            self.reportar_error(f"Error Léxico: USHORTINT fuera de rango ({t.value}) en línea {self.lineno}")
             return None
 
     def error(self, t):
-        print(f"Error Lexico: Caracter no reconocido '{t.value[0]}' en la linea {self.lineno}")
+        self.reportar_error(f"Error Lexico: Caracter no reconocido '{t.value[0]}' en la linea {self.lineno}")
         self.index +=1
 
-
 if __name__ == '__main__':
-    
+    import sys
+
     if len(sys.argv) < 2:
         print("Error: Falta el archivo de entrada.")
-        print("Uso: python3 analizador_lexico.py <ruta_del_archivo.txt>")
         sys.exit(1)
 
     nombre_archivo = sys.argv[1]
@@ -124,23 +136,15 @@ if __name__ == '__main__':
         
         lexer = analizador_lexico()
 
-        print(f"\n--- INICIANDO ANÁLISIS LÉXICO: {nombre_archivo} ---")
-        print("-" * 60)
-        print(f"{'TOKEN':<18} | {'LEXEMA':<28} | {'LÍNEA'}")
-        print("-" * 60)
-
         for tok in lexer.tokenize(data):
-            # Extraemos el string del diccionario para una impresión limpia en consola
             if isinstance(tok.value, dict):
                 valor_imprimir = tok.value.get("lexema", str(tok.value))
             else:
                 valor_imprimir = tok.value
-                
-            print(f"{tok.type:<18} | {str(valor_imprimir)!r:<28} | {tok.lineno}")
-
-        print("-" * 60)
+                        
+        if lexer.errores == 0:
+            print("Se ha compilado exitosamente.")
         
-        # Imprimimos la Tabla de Símbolos
         lexer.ts.imprimir()
 
     except FileNotFoundError:

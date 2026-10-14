@@ -1,10 +1,20 @@
 import sys
 import json
-from sly import Parser
+from sly import Lexer, Parser
 from pprint import pprint
+from tabla_simbolos import TablaSimbolos
 from analizador_lexico import analizador_lexico
 
 class analizador_sintactico(Parser):
+
+    def __init__(self):
+        super().__init__()
+        self.ts = TablaSimbolos()
+        self.errores = 0
+    
+    def reportar_error(self, mensaje):
+        print(mensaje)
+        self.errores += 1
 
     tokens = analizador_lexico.tokens
 
@@ -15,11 +25,12 @@ class analizador_sintactico(Parser):
         ('left', 'MAS', 'MENOS'),
         ('left', 'MULT', 'DIV'),
         ('right', 'UMINUS'),
+        ('right', 'ID'),
     )
 
     #DECLARACION DE PROGRAMA
 
-    @_('ID sentencias_declarativas BEGIN sentencias_ejecutables END')
+    @_('ID sentencias_declarativas bloque_sentencias')
     def programa(self, p):
         return p
 
@@ -29,7 +40,7 @@ class analizador_sintactico(Parser):
     def sentencias_declarativas(self, p):
         return p
 
-    @_('')
+    @_('%prec ID')
     def sentencias_declarativas(self,p):
         return []
     
@@ -80,12 +91,10 @@ class analizador_sintactico(Parser):
         }]
 
     @_('sentencias_ejecutables_funcion sentencia_ejecutable_funcion')
-    #1 o mas sentencias ejecutables dentro de una funcion
     def sentencias_ejecutables_funcion(self,p):
         return p
 
     @_('')
-    #0 o para terminar de detectar sentencias ejecutables dentro de una funcion
     def sentencias_ejecutables_funcion(self, p):
         return []
 
@@ -140,6 +149,10 @@ class analizador_sintactico(Parser):
 
     #-----------------------// SENTENCIAS EJECUTABLES //-----------------------
 
+    @_('BEGIN sentencias_ejecutables END')
+    def bloque_sentencias(self, p):
+        return p
+
     @_('sentencias_ejecutables sentencia_ejecutable')
     def sentencias_ejecutables(self, p):
         return p
@@ -158,24 +171,17 @@ class analizador_sintactico(Parser):
     def asignacion_punto(self, p):
         return p
 
-    @_('lado_izquierdo ASIGNACION_IGUAL expresion')
+    @_('lado_izquierdo ASIGNACION_IGUAL "(" expresion ")"')
     def asignacion_igual(self, p):
         return p
-
-    @_('lado_izquierdo ASIGNACION_IGUAL expresion')
-    def asignacion_inline(self, p):
-        return p
     
-    #definir estrictamente si permitimos esto en el sintactico pero en el semantico se verifica que no es posible
-    #llamar una funcion desde un atributo posicional o no permitirlo de una aca en el sintactico
     @_('ID',
        'ID "." ID',
        'ID "[" CTE_USHORTINT "]"')
     def lado_izquierdo(self, p):
         return p
     
-    @_('asignacion_punto', 
-       'asignacion_igual',
+    @_('asignacion_punto',
        'llamado_funcion',
        'IF condicion_parentesis bloque_sentencias bloque_else END_IF',
        'POUT "(" expresion ")"',
@@ -207,15 +213,7 @@ class analizador_sintactico(Parser):
     @_('')
     def bloque_else(self, p):
         return []
-
-    @_('BEGIN sentencias_ejecutables END')
-    def bloque_sentencias(self, p):
-        return p
-
-    @_('sentencia_ejecutable')
-    def bloque_sentencias(self, p):
-        return p
-        
+    
     # ---------------- EXPRESIONES ARITMETICAS ----------------
 
     @_('expresion MAS expresion')
@@ -239,7 +237,7 @@ class analizador_sintactico(Parser):
         return ('TODF', p.expresion)
 
     @_('lado_izquierdo',
-       'asignacion_inline',
+       'asignacion_igual',
        'CTE_USHORTINT',
        'expr_cte_doublef',
        'expr_neg_cte_doublef',
@@ -300,158 +298,152 @@ class analizador_sintactico(Parser):
     def parametros_reales(self, p):
         return [p.expresion]
 
-    #-----------------------// FIN DE SENTENCIAS EJECUTABLES //-----------------------
-
     #-----------------------// RECUPERACIÓN DE ERRORES //-----------------------
+
+    @_('sentencias_declarativas bloque_sentencias')
+    def programa(self, p):
+        self.reportar_error(f"Error: falta nombre al inicio del programa.")
 
     @_('POUT "(" error ")"')
     def cuerpo_sentencia_ejecutable(self, p):
-        print(f"Error: falta argumento de salida en pout en linea {p.lineno}.")
+        self.reportar_error(f"Error: falta argumento de salida en pout en linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
 
     @_('cuerpo_declaracion error')
     def sentencia_declarativa(self, p):
-        print(f"Error: falta ; en declaracion de linea {p.lineno}.")
+        self.reportar_error(f"Error: falta ; en declaracion de linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
 
     @_('cuerpo_sentencia_ejecutable error')
     def sentencia_ejecutable(self, p):
-        print(f"Error: falta ; en sentencia de linea {p.lineno}.")
+        self.reportar_error(f"Error: falta ; en sentencia de linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
     
     @_('cuerpo_elemento_clase error')
     def elemento_clase(self, p):
-        print(f"Error: falta ; en elemento de clase de linea {p.lineno}.")
+        self.reportar_error(f"Error: falta ; en elemento de clase de linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
     
     @_('cuerpo_retorno error')
     def sentencia_ejecutable_funcion(self, p):
-        print(f"Error: falta ; en retorno (ret) de linea {p.lineno}.")
+        self.reportar_error(f"Error: falta ; en retorno en linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
     
-    @_('error bloque_sentencias WHILE condicion_parentesis')
-    def cuerpo_sentencia_ejecutable(self, p):
-        print(f"Error: falta REPEAT en iteracion de linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('REPEAT bloque_sentencias error condicion_parentesis')
-    def cuerpo_sentencia_ejecutable(self, p):
-        print(f"Error: falta WHILE en iteracion de linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
     @_('TYPEDEF ID ASIGNACION_IGUAL "[" "]"')
     def cuerpo_declaracion(self, p):
-        print(f"Error: ausencia de valores para ENUMERADO en linea {p.lineno}.")
+        self.reportar_error(f"Error: ausencia de valores para ENUMERADO en linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
 
     @_('EXTENDS error')
     def cuerpo_elemento_clase(self, p):
-        print(f"Error: ausencia de clases en EXTENDS en linea {p.lineno}.")
+        self.reportar_error(f"Error: ausencia de clases en EXTENDS en linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
 
-    @_('asignacion_punto')
-    def asignacion_inline(self, p):
-        print(f"Error: usa := donde va = en asignacion de linea {p.lineno}.")
+    @_('lado_izquierdo ASIGNACION_IGUAL expresion')
+    def cuerpo_sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error: la inicializacion de variables es con ':='. Linea: {p.lineno}.")
+        return ('ERROR_RECUPERADO',)
+
+    @_('lado_izquierdo ASIGNACION_PUNTO "(" expresion ")"')
+    def asignacion_igual(self, p):
+        self.reportar_error(f"Error: la asignacion de valores es con '='. Linea: {p.lineno}.")
+        return ('ERROR_RECUPERADO',)
+
+    @_('lado_izquierdo ASIGNACION_IGUAL error')
+    def asignacion_igual(self, p):
+        self.reportar_error(f"Error: faltan parentesis en asignacion de linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
     
-    @_('IF condicion_parentesis bloque_sentencias bloque_else error')
-    def cuerpo_sentencia_ejecutable(self, p):
-        print(f"Error: falta end_if en estructura IF de linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('error condicion ")"')
+    @_('condicion ")"')
     def condicion_parentesis(self, p):
-        print(f"Error: falta '(' en condicion de linea {p.lineno}.")
+        self.reportar_error(f"Error: falta '(' en condicion de linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
 
     @_('"(" condicion error')
     def condicion_parentesis(self, p):
-        print(f"Error: falta ')' en condicion de linea {p.lineno}.")
+        self.reportar_error(f"Error: falta ')' en condicion de linea {p.lineno}.")
+        return ('ERROR_RECUPERADO',)
+
+    @_('IF condicion_parentesis error')
+    def cuerpo_sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error: falta 'end_if' para if en linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
 
     @_('tipo FUNCTION error "(" parametros_formales ")" sentencias_declarativas BEGIN sentencias_ejecutables_funcion END')
     def cuerpo_declaracion(self, p):
-        print(f"Error: falta nombre de funcion en linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('error sentencias_declarativas BEGIN sentencias_ejecutables END')
-    def programa(self, p):
-        print(f"Error: falta nombre del programa al inicio.")
+        self.reportar_error(f"Error: falta nombre de funcion en linea {p.lineno}.")
         return ('ERROR_RECUPERADO',)
     
-    @_('lista_variables error ID')
+    @_('lista_variables ID')
     def lista_variables(self, p):
-        print(f"Error: falta ',' para separar variables en linea {p.lineno}.")
+        self.reportar_error(f"Error: falta ',' para separar variables en linea {p.lineno}.")
         return p.lista_variables + [p.ID]
 
     @_('tipo error')
     def parametros_formales(self, p):
-        print(f"Error: falta nombre del parametro formal en linea {p.lineno}.")
-        return [{"tipo": f"lista de parametros de tipo: {p.tipo}", "id": "ERROR"}]
+        self.reportar_error(f"Error: falta nombre del parametro formal en linea {p.lineno}.")
+        return ('ERROR_RECUPERADO',)
 
     @_('error ID')
     def parametros_formales(self, p):
-        print(f"Error: falta tipo del parametro formal '{p.ID}' en linea {p.lineno}.")
-        return [{"tipo": "ERROR", "id": p.ID}]
+        self.reportar_error(f"Error: falta tipo del parametro formal en linea {p.lineno}.")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('BEGIN error')
+    def bloque_sentencias(self, p):
+        self.reportar_error(f"Error: falta END para cerrar el bloque BEGIN en linea {p.lineno}.")
+        return ('ERROR_RECUPERADO',)
 
-    @_('REPEAT error WHILE condicion_parentesis')
+    @_('WHILE condicion_parentesis') 
     def cuerpo_sentencia_ejecutable(self, p):
-        print(f"Error: falta cuerpo en iteracion de linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
+        self.reportar_error(f"Error: falta REPEAT y cuerpo ejecutable en iteracion. Linea: {p.lineno}")
+        return ('ERROR_RECUPERADO', )
 
-    @_('ID sentencias_declarativas error sentencias_ejecutables END')
-    def programa(self, p):
-        print(f"Error: falta BEGIN del programa.")
-        return ('ERROR_RECUPERADO',)
+    @_('bloque_sentencias WHILE condicion_parentesis') 
+    def cuerpo_sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error: falta REPEAT en iteracion. Linea: {p.lineno}")
+        return ('ERROR_RECUPERADO', )
 
-    @_('ID sentencias_declarativas BEGIN sentencias_ejecutables error')
-    def programa(self, p):
-        print(f"Error: falta END de fin de programa.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('error ";"')
-    def sentencia_ejecutable(self, p):
-        print(f"Error: error general, linea {p.lineno} omitida.")
-        return ('ERROR_RECUPERADO',)
+    @_('REPEAT WHILE condicion_parentesis') 
+    def cuerpo_sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error: falta cuerpo ejecutable en iteracion. Linea: {p.lineno}")
+        return ('ERROR_RECUPERADO', )
 
     def error(self, p):
         if not p:
-            print("Error: Fin de archivo inesperado.")
+            self.reportar_error("Error: Fin de archivo inesperado. Falta 'END' o 'end_if' de cierre.")
             return
         pass
-
-    # comentario del tipo p
-    # p.CTE_DOUBLEF = referencia a la ts
-    # cada objeto p contiene como atributo cada parte de la regla que lo compone
-    # por ejemplo, la regla @_('MENOS CTE_DOUBLEF %prec UMINUS')
-    # hace que sly cree un objeto p con p.MENOS y p.CTE_DOUBLEF (lo demas no porque no son tokens)
-
-if __name__ == '__main__':
     
-    lexer = analizador_lexico()
-    parser = analizador_sintactico()
-        
-    if len(sys.argv) > 1:
+if __name__ == '__main__':
+
+        if len(sys.argv) < 2:
+            print("Error: Falta el archivo de entrada.")
+            sys.exit(1)
+
         nombre_archivo = sys.argv[1]
+
         try:
             with open(nombre_archivo, 'r', encoding='utf-8') as archivo:
                 data = archivo.read()
                 
-            print(f"\n Analisis Sintactico ")
-
-            # esto funciona como el yylex() ya que internamente va consumiendo tokens a medida que los pide el parser
-            # usa metodo next() por debajo para consumir tokens del lexer
-
+            lexer = analizador_lexico()
+            parser = analizador_sintactico()
+                
             tokens = lexer.tokenize(data)
-            
             parser.ts = lexer.ts 
             
             arbol = parser.parse(tokens)
                 
-            # print(f"\n Arbol de Sintaxis (AST)")
-            # pprint(arbol, indent=2, width=100)
+            print("-" * 65)
             
-            # parser.ts.imprimir()
+            # 2. Veredicto final
+            total_errores = lexer.errores + parser.errores
+            
+            if total_errores == 0:
+                print("Se ha compilado exitosamente.")
+                
+            parser.ts.imprimir()
                 
         except FileNotFoundError:
             print(f"Error: No se encontró el archivo '{nombre_archivo}'.")
