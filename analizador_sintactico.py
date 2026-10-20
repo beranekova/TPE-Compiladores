@@ -30,26 +30,34 @@ class analizador_sintactico(Parser):
 
     #DECLARACION DE PROGRAMA
 
-    @_('ID sentencias_declarativas bloque_sentencias')
+    @_('PROGRAM ID sentencias_declarativas cuerpo_programa')
     def programa(self, p):
         return p
 
     #-----------------------// SENTENCIAS DECLARATIVAS //-----------------------
 
+    #Declaracion de una o mas sentencias
     @_('sentencias_declarativas sentencia_declarativa')
     def sentencias_declarativas(self, p):
         return p
 
-    @_('%prec ID')
+    @_('BEGIN sentencias_ejecutables END')
+    def cuerpo_programa(self, p):
+        return p
+
+    #ninguna sentencia declarada
+    @_('')
     def sentencias_declarativas(self,p):
         return []
     
+    #declaramos el cuerpo_declaracion para separar y que sea mas facil ver si falta el ;
     @_('cuerpo_declaracion ";"')
     def sentencia_declarativa(self, p):
         return p.cuerpo_declaracion
     
+    #aca van las declaraciones posibles
     @_('declaracion_variables',
-       'tipo FUNCTION ID "(" parametros_formales ")" sentencias_declarativas BEGIN sentencias_ejecutables_funcion END',
+       'declaracion_funcion',
        'TYPEDEF ID ASIGNACION_IGUAL "[" lista_valores "]"',
        'CLASS ID BEGIN declaracion_clase END')
     def cuerpo_declaracion(self, p):
@@ -75,40 +83,52 @@ class analizador_sintactico(Parser):
 
     #DECLARACION DE FUNCIONES
     
-    @_('tipo ID',
-       '')
-    def parametros_formales(self, p):
-        return [{
-            "tipo": f"lista de parametros de tipo: {p.tipo}",
-            "id": p.ID
-        }]
+    #parametros formales de funciones
 
-    @_('parametros_formales "," tipo ID')
-    def parametros_formales(self, p):
-        return p.parametros_formales + [{
-            "tipo": f"lista de parametros de tipo: {p.tipo}",
-            "id": p.ID
-        }]
-
-    @_('sentencias_ejecutables_funcion sentencia_ejecutable_funcion')
-    def sentencias_ejecutables_funcion(self,p):
+    @_('firma_funcion cuerpo_funcion')
+    def declaracion_funcion(self, p):
         return p
 
+    @_('tipo FUNCTION ID "(" parametros_formales ")" sentencias_declarativas')
+    def firma_funcion(self, p):
+        return p
+    
+    @_('BEGIN sentencias_ejecutables_funcion END')
+    def cuerpo_funcion(self, p):
+        return p
+
+    @_('lista_parametros',
+       '')
+    def parametros_formales(self, p):
+        return p
+
+    @_('tipo ID')
+    def lista_parametros(self, p):
+        return p
+
+    @_('lista_parametros "," tipo ID')
+    def lista_parametros(self, p):
+        return p
+
+    @_('sentencias_ejecutables_funcion sentencia_ejecutable_funcion')
+    def sentencias_ejecutables_funcion(self, p):
+        return p
+    
     @_('')
     def sentencias_ejecutables_funcion(self, p):
-        return []
+        return p
 
     @_('sentencia_ejecutable')
     def sentencia_ejecutable_funcion(self, p):
-        return p
-    
-    @_('RET retorno')
-    def cuerpo_retorno(self, p):
         return p
         
     @_('cuerpo_retorno ";"')
     def sentencia_ejecutable_funcion(self, p):
         return p.cuerpo_retorno
+
+    @_('RET retorno')
+    def cuerpo_retorno(self, p):
+        return p
 
     @_('expresion')
     def retorno(self, p):
@@ -120,6 +140,10 @@ class analizador_sintactico(Parser):
        '')
     def declaracion_clase(self, p):
         return p
+    
+    @_('cuerpo_elemento_clase ";"')
+    def elemento_clase(self, p):
+        return p
 
     @_('EXTENDS lista_variables',
        'declaracion_variables',
@@ -127,12 +151,12 @@ class analizador_sintactico(Parser):
     def cuerpo_elemento_clase(self, p):
         return p[0]
 
-    @_('cuerpo_elemento_clase ";"')
-    def elemento_clase(self, p):
-        return p
-
-    @_('tipo ID "(" parametros_formales ")" BEGIN sentencias_ejecutables_funcion END')
+    @_('firma_metodo cuerpo_funcion')
     def declaracion_metodo(self, p):
+        return p
+    
+    @_('tipo ID "(" parametros_formales ")"')
+    def firma_metodo(self, p):
         return p
     
     #----------------TEMA 23: ENUMERADOS
@@ -149,21 +173,34 @@ class analizador_sintactico(Parser):
 
     #-----------------------// SENTENCIAS EJECUTABLES //-----------------------
 
+    #ESTRUCTURA DE SENTENCIAS EJECUTABLES
     @_('BEGIN sentencias_ejecutables END')
-    def bloque_sentencias(self, p):
+    def bloque_ejecutable(self, p):
         return p
-
+    
+    @_('sentencia_ejecutable')
+    def bloque_ejecutable(self, p):
+        return p
+    
     @_('sentencias_ejecutables sentencia_ejecutable')
     def sentencias_ejecutables(self, p):
         return p
-        
+
     @_('')
     def sentencias_ejecutables(self, p):
         return []
     
     @_('cuerpo_sentencia_ejecutable ";"')
     def sentencia_ejecutable(self, p):
-        return p.cuerpo_sentencia_ejecutable
+        return p
+    
+    @_('asignacion_punto',
+       'llamado_funcion',
+       'IF condicion_parentesis bloque_ejecutable bloque_else END_IF',
+       'POUT "(" expresion ")"',
+       'REPEAT bloque_ejecutable WHILE condicion_parentesis')
+    def cuerpo_sentencia_ejecutable(self, p):
+        return p[0]
 
     #----------------DEFINICION DE ASIGNACIONES
     
@@ -180,14 +217,6 @@ class analizador_sintactico(Parser):
        'ID "[" CTE_USHORTINT "]"')
     def lado_izquierdo(self, p):
         return p
-    
-    @_('asignacion_punto',
-       'llamado_funcion',
-       'IF condicion_parentesis bloque_sentencias bloque_else END_IF',
-       'POUT "(" expresion ")"',
-       'REPEAT bloque_sentencias WHILE condicion_parentesis')
-    def cuerpo_sentencia_ejecutable(self, p):
-        return p[0]
     
     @_('"(" condicion ")"')
     def condicion_parentesis(self, p):
@@ -206,7 +235,7 @@ class analizador_sintactico(Parser):
     def comparador(self, p):
         return p
     
-    @_('ELSE bloque_sentencias')
+    @_('ELSE bloque_ejecutable')
     def bloque_else(self, p):
         return p
 
@@ -270,6 +299,10 @@ class analizador_sintactico(Parser):
     def orden_parametros(self, p):
         return p.lista_orden
     
+    @_('')
+    def orden_parametros(self, p):
+        return p
+    
     @_('lista_orden "," CTE_USHORTINT')
     def lista_orden(self, p):
         return p.lista_orden + [p.CTE_USHORTINT]
@@ -277,10 +310,6 @@ class analizador_sintactico(Parser):
     @_('CTE_USHORTINT')
     def lista_orden(self, p):
         return [p.CTE_USHORTINT]
-
-    @_('')
-    def orden_parametros(self, p):
-        return p
 
     @_('parametros_reales')
     def lista_argumentos(self, p):
@@ -298,124 +327,178 @@ class analizador_sintactico(Parser):
     def parametros_reales(self, p):
         return [p.expresion]
 
-    #-----------------------// RECUPERACIÓN DE ERRORES //-----------------------
+    # TRATAMIENTO DE ERRORES
+    def error(self, p):
+        if not p:
+            self.reportar_error(f"Error Sintactico: fin de programa inesperado, revisar cierre de bloques.")
+            return
+        pass
 
-    @_('sentencias_declarativas bloque_sentencias')
+    #ERROR: DECLARACION DE PROGRAMA INVALIDA
+    @_('error sentencias_declarativas BEGIN sentencias_ejecutables END')
     def programa(self, p):
-        self.reportar_error(f"Error: falta nombre al inicio del programa.")
-
-    @_('POUT "(" error ")"')
-    def cuerpo_sentencia_ejecutable(self, p):
-        self.reportar_error(f"Error: falta argumento de salida en pout en linea {p.lineno}.")
+        self.reportar_error(f"Error sintactico: declaracion de programa invalida. Revisar inicio de programa")
         return ('ERROR_RECUPERADO',)
+
+    #ERROR: DELIMITADORES FALTANTES
+    @_('BEGIN sentencias_ejecutables error')
+    def bloque_ejecutable(self, p):
+        self.reportar_error(f"Error sintactico: falta delimitador END de linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('firma_funcion BEGIN sentencias_ejecutables_funcion error')
+    def sentencia_declarativa(self, p):
+        self.reportar_error(f"Error sintactico: falta delimitador END para cerrar la funcion de linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    #ERRORES DE FUNCIONES
+
+    #firma_funcion: tipo FUNCTION ID "(" parametros_formales ")" sentencias_declarativas
+
+    @_('error FUNCTION ID "(" parametros_formales ")" sentencias_declarativas')
+    def firma_funcion(self, p):
+        self.reportar_error(f"Error sintactico: falta tipo de retorno en funcion. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('tipo ID "(" parametros_formales ")" sentencias_declarativas')
+    def firma_funcion(self, p):
+        self.reportar_error(f"Error sintactico: funcion mal declarada. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('tipo FUNCTION error "(" parametros_formales ")" sentencias_declarativas')
+    def firma_funcion(self, p):
+        self.reportar_error(f"Error sintactico: falta nombre de funcion. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+        
+    @_('tipo FUNCTION ID "(" error ")" sentencias_declarativas')
+    def firma_funcion(self, p):
+        self.reportar_error(f"Error sintactico: parametros formales mal definidos, ver tipo o nombre. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+
+    @_('tipo FUNCTION ID "(" error cuerpo_funcion')
+    def declaracion_funcion(self, p):
+        self.reportar_error(f"Error sintactico: falta parentesis de cierre ')'. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    #Regla general de error en firma_funcion
+    @_('error cuerpo_funcion')
+    def declaracion_funcion(self, p):
+        self.reportar_error(f"Error sintactico: funcion mal declarada. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    #OPCION 1: todas las reglas de funcion + regla general ded firma_funcion
+    #OPCION 2: unicamente regla general de funcion + regla de falta PR FUNCTION
+    
+    #FALTA DE PUNTO Y COMA (sentencias declarativas, ejecutables, ejecutables de funcion)
 
     @_('cuerpo_declaracion error')
     def sentencia_declarativa(self, p):
-        self.reportar_error(f"Error: falta ; en declaracion de linea {p.lineno}.")
+        self.reportar_error(f"Error sintactico en declaracion de variable. Revisar ; o caracteres indebidos cerca de linea {p._slice[1].lineno}")
+        return ('ERROR_RECUPERADO',)
+
+    @_('error ";"')
+    def sentencia_declarativa(self, p):
+        self.reportar_error(f"Error sintactico: declaracion invalida. Linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
 
     @_('cuerpo_sentencia_ejecutable error')
     def sentencia_ejecutable(self, p):
-        self.reportar_error(f"Error: falta ; en sentencia de linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-    
-    @_('cuerpo_elemento_clase error')
-    def elemento_clase(self, p):
-        self.reportar_error(f"Error: falta ; en elemento de clase de linea {p.lineno}.")
+        self.reportar_error(f"Error sintactico: sentencia ejecutable invalida. Revisar ';' o expresion invalida. Linea {p._slice[1].lineno}.")
         return ('ERROR_RECUPERADO',)
     
     @_('cuerpo_retorno error')
     def sentencia_ejecutable_funcion(self, p):
-        self.reportar_error(f"Error: falta ; en retorno en linea {p.lineno}.")
+        self.reportar_error(f"Error sintactico: falta ; cerca de linea ac{p._slice[1].lineno}.")
         return ('ERROR_RECUPERADO',)
     
-    @_('TYPEDEF ID ASIGNACION_IGUAL "[" "]"')
+    @_('cuerpo_elemento_clase error')
+    def elemento_clase(self, p):
+        self.reportar_error(f"Error sintactico: revisar falta de ';' o declaracion erronea de metodos. Linea {p._slice[1].lineno}.")
+        return ('ERROR_RECUPERADO',)
+    
+    #ERRORES EN ENUMERADO
+    #Falta de valores en enumerado. Ademas, como la lista no puede ser vacia, usamos el error, para que cualquier error sea contado ahi dentro
+
+    @_('TYPEDEF ID ASIGNACION_IGUAL "[" error "]"')
     def cuerpo_declaracion(self, p):
-        self.reportar_error(f"Error: ausencia de valores para ENUMERADO en linea {p.lineno}.")
+        self.reportar_error(f"Error sintactico: declaracion invalida para valores de enumerado. Linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
 
-    @_('EXTENDS error')
-    def cuerpo_elemento_clase(self, p):
-        self.reportar_error(f"Error: ausencia de clases en EXTENDS en linea {p.lineno}.")
+    #ERRORES DE CLASE
+    #Falta de nombre, delimitadores, errores internos (atributos y metodos)
+    @_('CLASS error declaracion_clase END')
+    def cuerpo_declaracion(self, p):
+        self.reportar_error(f"Error sintactico: falta identificador de clase o BEGIN de clase. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('error ";"')
+    def elemento_clase(self, p):
+        self.reportar_error(f"Error sintactico: elemento de clase mal declarado. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    #ERRORES EN METODOS DE CLASE
+    @_('ID "(" parametros_formales ")"')
+    def firma_metodo(self, p):
+        self.reportar_error(f"Error sintactico: falta el tipo de retorno en el metodo. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+
+    @_('tipo "(" parametros_formales ")"')
+    def firma_metodo(self, p):
+        self.reportar_error(f"Error sintactico: falta el nombre del metodo. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+
+    @_('tipo ID "(" error ")"')
+    def firma_metodo(self, p):
+        self.reportar_error(f"Error sintactico: parametros invalidos en el metodo, revisar tipo y nombre. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    #ERRORES EN SENTENCIAS EJECUTABLES
+
+    @_('POUT error')
+    def cuerpo_sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error sintactico: argumento de salida invalido, revisar '()' o argumento. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('"(" error ")"')
+    def condicion_parentesis(self, p):
+        self.reportar_error(f"Error sintactico: condicion invalida, revisar '()' y condicion. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('lado_izquierdo ASIGNACION_PUNTO "(" expresion ")"')
+    def asignacion_igual(self, p):
+        self.reportar_error(f"Error sintactico: asignacion invalida, debe ser '='. Linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
 
     @_('lado_izquierdo ASIGNACION_IGUAL expresion')
-    def cuerpo_sentencia_ejecutable(self, p):
-        self.reportar_error(f"Error: la inicializacion de variables es con ':='. Linea: {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('lado_izquierdo ASIGNACION_PUNTO "(" expresion ")"')
-    def asignacion_igual(self, p):
-        self.reportar_error(f"Error: la asignacion de valores es con '='. Linea: {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('lado_izquierdo ASIGNACION_IGUAL error')
-    def asignacion_igual(self, p):
-        self.reportar_error(f"Error: faltan parentesis en asignacion de linea {p.lineno}.")
+    def asignacion_punto(self, p):
+        self.reportar_error(f"Error sintactico: la inicializacion de variables se hace con ':='. Linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
     
-    @_('condicion ")"')
-    def condicion_parentesis(self, p):
-        self.reportar_error(f"Error: falta '(' en condicion de linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('"(" condicion error')
-    def condicion_parentesis(self, p):
-        self.reportar_error(f"Error: falta ')' en condicion de linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('IF condicion_parentesis error')
-    def cuerpo_sentencia_ejecutable(self, p):
-        self.reportar_error(f"Error: falta 'end_if' para if en linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('tipo FUNCTION error "(" parametros_formales ")" sentencias_declarativas BEGIN sentencias_ejecutables_funcion END')
-    def cuerpo_declaracion(self, p):
-        self.reportar_error(f"Error: falta nombre de funcion en linea {p.lineno}.")
+    @_('error ";"')
+    def sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error sintactico: sentencia o expresion invalida. Linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
     
-    @_('lista_variables ID')
-    def lista_variables(self, p):
-        self.reportar_error(f"Error: falta ',' para separar variables en linea {p.lineno}.")
-        return p.lista_variables + [p.ID]
-
-    @_('tipo error')
-    def parametros_formales(self, p):
-        self.reportar_error(f"Error: falta nombre del parametro formal en linea {p.lineno}.")
-        return ('ERROR_RECUPERADO',)
-
-    @_('error ID')
-    def parametros_formales(self, p):
-        self.reportar_error(f"Error: falta tipo del parametro formal en linea {p.lineno}.")
+    #Control de errores de bloque IF
+    @_('IF condicion_parentesis bloque_ejecutable bloque_else error')
+    def cuerpo_sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error sintactico: multiples sentencias deben ir entre 'BEGIN' y 'END'. Revisar falta de 'END_IF' para linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
     
-    @_('BEGIN error')
-    def bloque_sentencias(self, p):
-        self.reportar_error(f"Error: falta END para cerrar el bloque BEGIN en linea {p.lineno}.")
+    # Falta de while, condicion o delimitadores de bloque de sentencias
+    @_('REPEAT bloque_ejecutable error')
+    def cuerpo_sentencia_ejecutable(self, p):
+        self.reportar_error(f"Error sintactico: revisar estructura 'REPEAT...WHILE'. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('ELSE error')
+    def bloque_else(self, p):
+        self.reportar_error(f"Error sintactico: bloque 'ELSE' invalido. Linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
 
-    @_('WHILE condicion_parentesis') 
-    def cuerpo_sentencia_ejecutable(self, p):
-        self.reportar_error(f"Error: falta REPEAT y cuerpo ejecutable en iteracion. Linea: {p.lineno}")
-        return ('ERROR_RECUPERADO', )
-
-    @_('bloque_sentencias WHILE condicion_parentesis') 
-    def cuerpo_sentencia_ejecutable(self, p):
-        self.reportar_error(f"Error: falta REPEAT en iteracion. Linea: {p.lineno}")
-        return ('ERROR_RECUPERADO', )
-
-    @_('REPEAT WHILE condicion_parentesis') 
-    def cuerpo_sentencia_ejecutable(self, p):
-        self.reportar_error(f"Error: falta cuerpo ejecutable en iteracion. Linea: {p.lineno}")
-        return ('ERROR_RECUPERADO', )
-
-    def error(self, p):
-        if not p:
-            self.reportar_error("Error: Fin de archivo inesperado. Falta 'END' o 'end_if' de cierre.")
-            return
-        pass
     
 if __name__ == '__main__':
+        print("AVISO: LA COMPILACION SE REALIZA DE ARRIBA HACIA ABAJO, SE RECOMIENDA TRATAR PRIMERO LOS ERRORES DE ARRIBA DEL TODO.")
 
         if len(sys.argv) < 2:
             print("Error: Falta el archivo de entrada.")
@@ -431,19 +514,21 @@ if __name__ == '__main__':
             parser = analizador_sintactico()
                 
             tokens = lexer.tokenize(data)
+
             parser.ts = lexer.ts 
             
             arbol = parser.parse(tokens)
                 
             print("-" * 65)
             
-            # 2. Veredicto final
             total_errores = lexer.errores + parser.errores
             
             if total_errores == 0:
                 print("Se ha compilado exitosamente.")
                 
-            parser.ts.imprimir()
+            #parser.ts.imprimir()
+        
+            #pprint(arbol, indent=2, width=80)
                 
         except FileNotFoundError:
             print(f"Error: No se encontró el archivo '{nombre_archivo}'.")

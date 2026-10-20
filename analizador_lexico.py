@@ -24,7 +24,7 @@ class analizador_lexico(Lexer):
     MAYOR, MENOR, MAS, MENOS, MULT, DIV, 
     IF, ELSE, END_IF, BEGIN, END,
     POUT, RET, CLASS, FUNCTION, USHORTINT, DOUBLEF, 
-    TODF, TYPEDEF, REPEAT, WHILE, EXTENDS
+    TODF, TYPEDEF, REPEAT, WHILE, EXTENDS, PROGRAM
     }
 
     literals = {'(', ')', ',', ';', '[', ']','.'}
@@ -61,7 +61,7 @@ class analizador_lexico(Lexer):
             'ret': 'RET', 'class': 'CLASS', 'function': 'FUNCTION',
             'ushortint': 'USHORTINT', 'doublef': 'DOUBLEF',
             'todf': 'TODF', 'typedef': 'TYPEDEF', 'repeat': 'REPEAT',
-            'while': 'WHILE', 'extends': 'EXTENDS'
+            'while': 'WHILE', 'extends': 'EXTENDS', 'program': 'PROGRAM'
         }
 
         lexema = t.value.lower()
