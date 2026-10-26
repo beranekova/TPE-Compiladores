@@ -245,25 +245,50 @@ class analizador_sintactico(Parser):
     
     # ---------------- EXPRESIONES ARITMETICAS ----------------
 
-    @_('expresion MAS expresion')
+    def _procesar_operacion_binaria(self, op, izq, der, linea):
+    # Verificación del Tema 33 (Conversión explícita requerida)
+        if izq.tipo != der.tipo:
+            self.reportar_error_semantico(
+                f"Error Semántico: Tipos incompatibles para '{op}' ('{izq.tipo}' y '{der.tipo}'). "
+                f"Se requiere conversión explícita 'todf'.", 
+                linea
+            )
+            tipo_res = "ERROR"
+        else:
+            tipo_res = izq.tipo
+
+        return NodoArbol(valor=op, izquierdo=izq, derecho=der, tipo=tipo_res)
+
+    @_('expresion MAS expresion',
+       'expresion MENOS expresion',
+       'expresion MULT expresion',
+       'expresion DIV expresion')
     def expresion(self, p):
-        return ('SUMA', p.expresion0, p.expresion1)
+        return self._procesar_operacion_binaria(p[1], p.expresion0, p.expresion1, p.lineno)
 
     @_('expresion MENOS expresion')
     def expresion(self, p):
-        return ('RESTA', p.expresion0, p.expresion1)
+        return self._procesar_operacion_binaria(MENOS, p.expresion0, p.expresion1, p.lineno)
 
     @_('expresion MULT expresion')
     def expresion(self, p):
-        return ('MULT', p.expresion0, p.expresion1)
+        return self._procesar_operacion_binaria(MULT, p.expresion0, p.expresion1, p.lineno)
 
     @_('expresion DIV expresion')
     def expresion(self, p):
-        return ('DIV', p.expresion0, p.expresion1)
+        return self._procesar_operacion_binaria(DIV, p.expresion0, p.expresion1, p.lineno)
 
     @_('TODF "(" expresion ")"')
     def expresion(self, p):
-        return ('TODF', p.expresion)
+        nodo_expr = p.expresion
+        # Verificamos que lo que se intenta convertir sea de tipo entero
+        if nodo_expr.tipo != "USHORTINT":
+            self.reportar_error_semantico(
+                f"Error Semántico: 'todf' requiere una expresión de tipo entero, se obtuvo '{nodo_expr.tipo}'", 
+                p.lineno
+            )
+        # Retornamos el nodo de conversión promocionando el tipo a DOUBLEF
+        return NodoArbol(valor="todf", izquierdo=nodo_expr, tipo="DOUBLEF")
 
     @_('lado_izquierdo',
        'asignacion_igual',
