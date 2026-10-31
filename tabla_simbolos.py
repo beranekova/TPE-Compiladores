@@ -130,3 +130,10 @@ class TablaSimbolos:
 
         print(borde("└", "┴", "┘"))
         print(f"Total de símbolos: {len(filas)}")
+
+
+#tipo: puede ser USHORTINT, DOUBLEF, un enumerado o clase declarada por el usuario
+#uso: puede ser parametro, variable, clase, metodo, funcion
+#valor:
+#longitud:
+#alcance: en que ambitos se puede usar ese ID declarado

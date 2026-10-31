@@ -32,6 +32,7 @@ class analizador_sintactico(Parser):
 
     @_('PROGRAM ID sentencias_declarativas cuerpo_programa')
     def programa(self, p):
+        #aca no es necesario declarar nada para la tabla porque se inicializa en ambito main por defecto
         return p
 
     #-----------------------// SENTENCIAS DECLARATIVAS //-----------------------
@@ -58,14 +59,59 @@ class analizador_sintactico(Parser):
     #aca van las declaraciones posibles
     @_('declaracion_variables',
        'declaracion_funcion',
-       'TYPEDEF ID ASIGNACION_IGUAL "[" lista_valores "]"',
-       'CLASS ID BEGIN declaracion_clase END')
+       'declaracion_de_clase_completa')
     def cuerpo_declaracion(self, p):
         return p[0]
     
-    @_('tipo lista_variables',
-       'ID lista_variables')
+    @_('TYPEDEF ID ASIGNACION_IGUAL "[" lista_valores "]"')
+    def cuerpo_declaracion(self, p):
+        exito = self.tabla.insertar(p.ID, 'ID', tipo='enum', uso='enumeracion', valores=p.lista_valores)
+        if not exito:
+            self.reportar_error(f"Error semantico: El identificador '{p.ID}' ya fue declarado en este ambito. Linea {p.lineno}")
+            
+        return p
+    
+    @_('CLASS ID')
+    def cabecera_clase(self, p):
+        exito = self.tabla.insertar(p.ID, 'ID', tipo='clase', uso='clase')
+        #verificamos si la clase esta declarada o no previamente dentro del ambito en el que esta
+        if not exito:
+            self.reportar_error(f"Error semantico: la clase '{p.ID}' ya fue declarada. Linea {p.lineno}")
+        self.tabla.abrir_ambito(p.ID)
+        return p.ID
+
+    @_('cabecera_clase BEGIN declaracion_clase END')
+    def declaracion_de_clase_completa(self, p):
+        #cerramos el ambito una vez encontramos que la declaracion de la clase termino
+        self.tabla.cerrar_ambito()
+        return p
+    
+    @_('tipo lista_variables')
     def declaracion_variables(self, p):
+        tipo_var = p.tipo
+
+        #aca no verificamos si el tipo existe ya que es un tipo nativo que existe predefinido en la tabla de simbolos
+        for identificador in p.lista_variables:
+            exito = self.tabla.insertar(identificador, 'ID', tipo=tipo_var, uso='variable')
+            
+            if not exito:
+                self.reportar_error(f"Error semantico: la variable '{identificador}' ya fue declarada en este ambito. Linea {p.lineno}")
+        return p
+    
+    @_('ID lista_variables')
+    def declaracion_variables(self, p):
+        tipo_custom = p.ID 
+        
+        #primero verificamos que el tipo del enumerado o clase exista en al tabla
+        simbolo_tipo = self.tabla.buscar(tipo_custom)
+        if not simbolo_tipo or simbolo_tipo.get('uso') not in ['clase', 'enumeracion']:
+            self.reportar_error(f"Error semantico: el tipo '{tipo_custom}' no esta declarado o no es valido. Linea {p.lineno}")
+            
+        #si existe, nos fijamos si esta redeclarada o no la variable
+        for identificador in p.lista_variables:
+            exito = self.tabla.insertar(identificador, 'ID', tipo=tipo_custom, uso='variable')
+            if not exito:
+                self.reportar_error(f"Error semantico: la variable '{identificador}' ya fue declarada. Linea {p.lineno}")
         return p
 
     @_('USHORTINT', 
@@ -87,9 +133,22 @@ class analizador_sintactico(Parser):
 
     @_('firma_funcion cuerpo_funcion')
     def declaracion_funcion(self, p):
+        self.tabla.cerrar_ambito(p.ID)
         return p
 
-    @_('tipo FUNCTION ID "(" parametros_formales ")" sentencias_declarativas')
+    #dividimos la funcion en cabecera y firma para poder revisar si en el ambito padre ya se encuentra un ID (redeclaracion)
+    @_('tipo FUNCTION ID')
+    def cabecera_funcion(self, p):
+        exito = self.tabla.insertar(p.ID, 'ID', tipo=p.tipo, uso='funcion')
+        if not exito:
+            #verificamos si el ID de la funcion ya existe en el ambito en el que esta declarada la funcion
+            self.reportar_error(f"Error semantico: la funcion '{p.ID}' ya fue declarada. Linea {p.lineno}")
+            
+        self.tabla.abrir_ambito(p.ID)
+        return p.ID
+
+    #dentro en la firma verificamos que los parametros y las declaraciones sean validas semanticamente
+    @_('cabecera_funcion "(" parametros_formales ")" sentencias_declarativas')
     def firma_funcion(self, p):
         return p
     
@@ -97,19 +156,37 @@ class analizador_sintactico(Parser):
     def cuerpo_funcion(self, p):
         return p
 
-    @_('lista_parametros',
-       '')
+    @_('lista_parametros')
     def parametros_formales(self, p):
-        return p
+        return p.lista_parametros
+    
+    @_('')
+    def parametros_formales(self, p):
+        return []
 
     @_('tipo ID')
     def lista_parametros(self, p):
-        return p
+        exito = self.tabla.insertar(p.ID, 'ID', tipo=p.tipo, uso='parametro')
+        if not exito:
+            self.reportar_error(f"Error semantico: parametro '{p.ID}' redeclarado. Linea {p.lineno}")
+        
+        return [{'nombre': p.ID, 'tipo': p.tipo}]
 
     @_('lista_parametros "," tipo ID')
     def lista_parametros(self, p):
-        return p
-
+        exito = self.tabla.insertar(p.ID, 'ID', tipo=p.tipo, uso='parametro')
+        if not exito:
+            self.reportar_error(f"Error semantico: parametro '{p.ID}' redeclarado. Linea {p.lineno}")
+        
+        # Recuperamos la lista que venía subiendo por el árbol
+        lista_acumulada = p.lista_parametros
+        
+        # Le agregamos el nuevo parámetro
+        lista_acumulada.append({'nombre': p.ID, 'tipo': p.tipo})
+        
+        # Devolvemos la lista actualizada para que siga subiendo
+        return lista_acumulada
+    
     @_('sentencias_ejecutables_funcion sentencia_ejecutable_funcion')
     def sentencias_ejecutables_funcion(self, p):
         return p
@@ -153,11 +230,21 @@ class analizador_sintactico(Parser):
 
     @_('firma_metodo cuerpo_funcion')
     def declaracion_metodo(self, p):
+        self.tabla.cerrar_ambito()
         return p
     
-    @_('tipo ID "(" parametros_formales ")"')
+    @_('cabecera_metodo "(" parametros_formales ")"')
     def firma_metodo(self, p):
         return p
+
+    @_('tipo ID') 
+    def cabecera_metodo(self, p):
+        exito = self.tabla.insertar(p.ID, 'ID', tipo=p.tipo, uso='metodo')
+        if not exito:
+            self.reportar_error(f"Error semantico: el metodo '{p.ID}' ya fue declarado en esta clase. Linea {p.lineno}")
+            
+        self.tabla.abrir_ambito(p.ID)
+        return p.ID
     
     #----------------TEMA 23: ENUMERADOS
 
@@ -212,11 +299,95 @@ class analizador_sintactico(Parser):
     def asignacion_igual(self, p):
         return p
     
-    @_('ID',
-       'ID "." ID',
-       'ID "[" CTE_USHORTINT "]"')
+    @_('ID')
     def lado_izquierdo(self, p):
-        return p
+        simbolo = self.tabla.buscar(p.ID)
+        
+        # se valida que el ID este declarado en el ambito local o en algun padre
+        if not simbolo:
+            self.reportar_error(f"Error semantico: la variable '{p.ID}'- no fue declarada. Linea {p.lineno}")
+            tipo_encontrado = "ERROR"
+        else:
+            # si se encuentra declarado en local o en algun padre, se guarda la informacion del tipo y uso para posterior utilizacion
+            tipo_encontrado = simbolo["tipo"]
+            if simbolo["uso"] not in ['variable', 'parametro']:
+                self.reportar_error(f"Error semantico: uso incorrecto del identificador '{p.ID}'. Linea {p.lineno}")
+
+        return NodoArbol(valor=p.ID, tipo=tipo_encontrado)
+
+    @_('ID "." ID')
+    def lado_izquierdo(self, p):
+        nombre_obj = p.ID0
+        nombre_attr = p.ID1
+
+        #buscamos que el objeto exista primero
+        simbolo_obj = self.tabla.buscar(nombre_obj)
+        if not simbolo_obj:
+            self.reportar_error(f"Error semantico: el objeto '{nombre_obj}' no fue declarado. Linea {p.lineno}")
+            return NodoArbol(valor=".", izquierdo=NodoArbol(valor=nombre_obj), derecho=NodoArbol(valor=nombre_attr), tipo="ERROR")
+
+        #si existe, extraemos el tipo, que el tipo del objeto es la entrada de la tabla que tiene el nombre de la clase
+        #el cual usamos para verificar que ese tipo extraido sea efectivamente de uso Clase y ya haya estado declarada
+        nombre_clase = simbolo_obj.get("tipo")        
+        simbolo_clase = self.tabla.buscar(nombre_clase)
+        if not simbolo_clase or simbolo_clase.get("uso") != "clase":
+            self.reportar_error(f"Error semantico: '{nombre_obj}' no es un objeto de clase. Linea {p.lineno}")
+            return NodoArbol(valor=".", izquierdo=NodoArbol(valor=nombre_obj), derecho=NodoArbol(valor=nombre_attr), tipo="ERROR")
+
+        #para la clase valida que obtuvimos, armamos todo el alcance para verificar que el atributo existe realmente dentro de la clase
+        #y no confundir y verificar en otro ambito
+        alcance_clase = f"{simbolo_clase['alcance']}:{nombre_clase}"
+        
+        #de aca obtenemos el alcance completo que tiene el simbolo que vamos a verificar esta declarado en la clase
+        simbolo_attr = self.tabla.obtener(nombre_attr, alcance=alcance_clase)
+
+        #verificamos que el uso del atributo sea una variable
+        if not simbolo_attr or simbolo_attr.get("uso") != "variable":
+            self.reportar_error(f"Error semantico: el atributo '{nombre_attr}' no existe en la clase '{nombre_clase}'. Linea {p.lineno}")
+            tipo_attr = "ERROR"
+        else:
+            tipo_attr = simbolo_attr["tipo"]
+
+        #devolvemos un nodo para el arbol con el tipo de la variable para hacer la verificacion de compatibilidad de tipos
+        return NodoArbol(valor=".", izquierdo=NodoArbol(valor=nombre_obj), derecho=NodoArbol(valor=nombre_attr), tipo=tipo_attr)
+
+    @_('ID "[" CTE_USHORTINT "]"')
+    def lado_izquierdo(self, p):
+        nombre_obj = p.ID
+        # Ajustá esto si tu lexer devuelve un diccionario en vez de un string (ej: int(p.CTE_USHORTINT['lexema']))
+        indice = int(p.CTE_USHORTINT) 
+
+        # 1. Buscamos el objeto y su clase (misma lógica que arriba)
+        simbolo_obj = self.tabla.buscar(nombre_obj)
+        if not simbolo_obj:
+            self.reportar_error(f"Error semantico: el objeto '{nombre_obj}' no fue declarado. Linea {p.lineno}")
+            return NodoArbol(valor="[]", izquierdo=NodoArbol(valor=nombre_obj), derecho=NodoArbol(valor=str(indice)), tipo="ERROR")
+
+        nombre_clase = simbolo_obj.get("tipo")
+        simbolo_clase = self.tabla.buscar(nombre_clase)
+        if not simbolo_clase or simbolo_clase.get("uso") != "clase":
+            self.reportar_error(f"Error semantico: '{nombre_obj}' no es un objeto de clase. Linea {p.lineno}")
+            return NodoArbol(valor="[]", izquierdo=NodoArbol(valor=nombre_obj), derecho=NodoArbol(valor=str(indice)), tipo="ERROR")
+
+        # 2. Recuperamos la lista posicional de atributos guardada en la tabla
+        atributos_clase = simbolo_clase.get("atributos", [])
+        
+        # 3. Validamos que el índice no se pase del límite de atributos
+        if indice >= len(atributos_clase):
+            self.reportar_error(f"Error semantico: Indice fuera de rango. La clase '{nombre_clase}' tiene {len(atributos_clase)} atributos, se pidio el indice {indice}. Linea {p.lineno}")
+            return NodoArbol(valor="[]", izquierdo=NodoArbol(valor=nombre_obj), derecho=NodoArbol(valor=str(indice)), tipo="ERROR")
+
+        # 4. Extraemos el nombre real del atributo desde la lista
+        nombre_attr = atributos_clase[indice]
+
+        # 5. Buscamos ese atributo en el ámbito de la clase para obtener su tipo semántico
+        alcance_clase = f"{simbolo_clase['alcance']}:{nombre_clase}"
+        simbolo_attr = self.tabla.obtener(nombre_attr, alcance=alcance_clase)
+        
+        tipo_attr = simbolo_attr["tipo"] if simbolo_attr else "ERROR"
+
+        # Transformamos el nodo posicional para que la generación de código sea más sencilla
+        return NodoArbol(valor="posicional", izquierdo=NodoArbol(valor=nombre_obj), derecho=NodoArbol(valor=nombre_attr), tipo=tipo_attr)
     
     @_('"(" condicion ")"')
     def condicion_parentesis(self, p):
@@ -259,24 +430,14 @@ class analizador_sintactico(Parser):
 
         return NodoArbol(valor=op, izquierdo=izq, derecho=der, tipo=tipo_res)
 
+
+    #chusmear que onda con que se pisan las definiciones de la expresion
     @_('expresion MAS expresion',
        'expresion MENOS expresion',
        'expresion MULT expresion',
        'expresion DIV expresion')
     def expresion(self, p):
         return self._procesar_operacion_binaria(p[1], p.expresion0, p.expresion1, p.lineno)
-
-    @_('expresion MENOS expresion')
-    def expresion(self, p):
-        return self._procesar_operacion_binaria(MENOS, p.expresion0, p.expresion1, p.lineno)
-
-    @_('expresion MULT expresion')
-    def expresion(self, p):
-        return self._procesar_operacion_binaria(MULT, p.expresion0, p.expresion1, p.lineno)
-
-    @_('expresion DIV expresion')
-    def expresion(self, p):
-        return self._procesar_operacion_binaria(DIV, p.expresion0, p.expresion1, p.lineno)
 
     @_('TODF "(" expresion ")"')
     def expresion(self, p):
