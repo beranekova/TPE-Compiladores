@@ -36,6 +36,11 @@ class TablaSimbolos:
                 "alcance": alcance_efectivo
             }
 
+            if valor is not None:
+                entrada["valor"] = valor
+            if longitud is not None:
+                entrada["longitud"] = longitud
+                
             # Agrega cualquier atributo extra pasado (parametros, valores_enum, extend, valor, longitud, etc)
             entrada.update(kwargs);
                 

@@ -78,16 +78,12 @@ class analizador_lexico(Lexer):
             # Los warnings no usan reportar_error para no hacer fallar la compilacion final
             print(f"WARNING: Se trunco el identificador en linea {self.lineno}. Maximo 22 caracteres.")
             t.value = t.value[:22]
-
-        self.ts.insertar(t.value, "ID")
-        t.value = self.ts.obtener(t.value, "ID")
+            
         return t
 
     @_(r"'[^'\n]*'")
     def CADENA(self, t):
         longitud = len(t.value) - 2
-        self.ts.insertar(t.value, "CADENA", longitud=longitud)
-        t.value = self.ts.obtener(t.value, "CADENA")
         return t
 
     @_(r'\d*\.\d+(?:d[+-]?\d+)?')
@@ -96,8 +92,6 @@ class analizador_lexico(Lexer):
         try:
             val = float(val_str)
             if (val == 0.0) or (2.2250738585072014e-308 <= val <= 1.7976931348623157e+308):
-                self.ts.insertar(t.value, "CTE_DOUBLEF", valor=val)
-                t.value = self.ts.obtener(t.value, "CTE_DOUBLEF")
                 return t
             else:
                 self.reportar_error(f"Error Léxico: DOUBLEF fuera de rango en línea {self.lineno}")
@@ -110,8 +104,6 @@ class analizador_lexico(Lexer):
     def CTE_USHORTINT(self, t):
         val = int(t.value[:-3]) 
         if 0 <= val <= 255:
-            self.ts.insertar(t.value, "CTE_USHORTINT", valor=val)
-            t.value = self.ts.obtener(t.value, "CTE_USHORTINT")
             return t
         else:
             self.reportar_error(f"Error Léxico: USHORTINT fuera de rango ({t.value}) en línea {self.lineno}")
