@@ -1,35 +1,23 @@
-PROGRAM prueba_fallas
+PROGRAM prueba
+    class clase1
+    BEGIN
+        ushortint atributo1;
+    end;
 
-ushortint var_a, var_b;
-ushortint var_a;             {{ ERROR SEMÁNTICO: Redeclaración de var_a }}
-ushortint ;                  {{ ERROR SINTÁCTICO: Declaración de variable inválida }}
+    class clase2
+    BEGIN
+        doublef atributo1;
+    end;
 
-ushortint FUNCTION (ushortint x)  {{ ERROR SINTÁCTICO: Firma de función mal declarada (falta el nombre) }}
-ushortint z;
+    clase1 objeto1;
+
+    clase2 objeto2;
+
+    USHORTINT FUNCTION aa (USHORTINT a)
+    BEGIN
+        a := 1$us;
+        RET a;
+    END;
 BEGIN
-    z := x + @ 10$us;        {{ ERROR LÉXICO: Carácter '@' no reconocido }}
-    ret z;
-END;
-
-CLASS auto BEGIN
-    ushortint velocidad;
-    velocidad := 10$us;      {{ ERROR SINTÁCTICO: Elemento de clase mal declarado (sentencia dentro de la clase) }}
-    extends vehiculo;
-END;
-
-BEGIN
-    var_c := 10$us;           {{ ERROR SEMÁNTICO: Variable 'var_c' no declarada }}
-
-    IF (var_a > 0$us) 
-        BEGIN
-            POUT (var_a);
-        end
-    END_IF;
-
-    var_a := var_a + 3.5d0;   {{ ERROR SEMÁNTICO: Incompatibilidad USHORTINT + DOUBLEF }}
-
-    REPEAT BEGIN
-        var_a := var_a - 1$us;
-    END WHILE (var_a < var_b);
-
+    objeto1 := objeto2;
 END

@@ -36,11 +36,6 @@ class TablaSimbolos:
                 "alcance": alcance_efectivo
             }
 
-            if valor is not None:
-                entrada["valor"] = valor
-            if longitud is not None:
-                entrada["longitud"] = longitud
-                
             # Agrega cualquier atributo extra pasado (parametros, valores_enum, extend, valor, longitud, etc)
             entrada.update(kwargs);
                 
@@ -71,36 +66,45 @@ class TablaSimbolos:
         clave = self._generar_clave(lexema, alcance)
         return self.tabla.get(clave, None)
 
+
     def imprimir(self):
-        print("\n" + "=" * 90)
-        print(" " * 30 + "TABLA DE SÍMBOLOS")
-        print("=" * 90)
+        print("\n" + "=" * 110)
+        print(" " * 40 + "TABLA DE SÍMBOLOS")
+        print("=" * 110)
 
-        # Encabezados
-        columnas = ("TOKEN", "LEXEMA", "ATRIBUTOS")
+        columnas = ("TOKEN", "LEXEMA", "TIPO", "USO", "ALCANCE", "EXTRA")
 
-        # Extraer los datos de la tabla de símbolos
         filas = []
 
         for simbolo, datos in self.tabla.items():
             token = datos.get("token", "")
             lexema = datos.get("lexema", "")
+            tipo = datos.get("tipo", "")
+            uso = datos.get("uso", "")
+            alcance = datos.get("alcance", "")
 
-            # Obtener los atributos adicionales, excluyendo token y lexema
-            atributos = {
+            # Reunir todos los atributos adicionales en EXTRA
+            atributos_extra = {
                 clave: valor
                 for clave, valor in datos.items()
-                if clave not in ("token", "lexema")
+                if clave not in ("token", "lexema", "tipo", "uso", "alcance")
+                and valor is not None
             }
 
-            # Mostrar los atributos en una sola columna
-            texto_atributos = (
-                ", ".join(f"{clave}: {str(valor)}" for clave, valor in atributos.items() if valor is not None)
-                if atributos
+            texto_extra = (
+                ", ".join(f"{clave}: {valor}" for clave, valor in atributos_extra.items())
+                if atributos_extra
                 else "—"
             )
 
-            filas.append((token, lexema, texto_atributos))
+            filas.append((
+                str(token),
+                str(lexema),
+                str(tipo),
+                str(uso),
+                str(alcance),
+                texto_extra
+            ))
 
         # Calcular el ancho necesario para cada columna
         anchos = [
@@ -108,7 +112,7 @@ class TablaSimbolos:
             for i in range(len(columnas))
         ]
 
-        # Dibujar los bordes de la tabla
+        # Dibujar los bordes
         def borde(izquierda, union, derecha, horizontal="─"):
             return (
                 izquierda

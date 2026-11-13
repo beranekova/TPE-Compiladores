@@ -753,6 +753,10 @@ class analizador_sintactico(Parser):
     def sentencia_declarativa(self, p):
         self.reportar_error(f"Error sintactico: falta delimitador END para cerrar la funcion de linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
+    
+    @_('RET error ";"')
+    def sentencia_ejecutable_funcion(self, p):
+        self.reportar_error(f"Error sintactico: retorno mal formado. Linea {p.lineno}")
 
     #ERRORES DE FUNCIONES
     @_('error FUNCTION ID "(" parametros_formales ")" sentencias_declarativas')
@@ -921,7 +925,7 @@ if __name__ == '__main__':
             print("Se ha compilado exitosamente.")
             
         # Impresión opcional de la Tabla de Símbolos (descomentar si se requiere)
-        # parser.tabla.imprimir()
+        parser.tabla.imprimir()
 
         # Impresión opcional del Árbol Sintáctico (AST)
         if mostrar_arbol and arbol:
