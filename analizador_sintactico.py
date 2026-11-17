@@ -5,6 +5,7 @@ from pprint import pprint
 from tabla_simbolos import TablaSimbolos
 from analizador_lexico import analizador_lexico
 from arbol import NodoArbol
+from generador_assembler import generador_assembler
 
 class analizador_sintactico(Parser):
 
@@ -12,12 +13,19 @@ class analizador_sintactico(Parser):
         super().__init__()
         self.tabla = TablaSimbolos()
         self.errores = 0
+        self.errores_emitidos = set()
+        self.warnings_emitidos = set()
     
     def reportar_error(self, mensaje, linea=None):
         if linea is not None and f"Linea {linea}" not in str(mensaje):
-            print(f"{mensaje}. Linea {linea}")
+            mensaje_final = f"{mensaje}. Linea {linea}"
         else:
-            print(mensaje)
+            mensaje_final = str(mensaje)
+        #verificamos si la linea y el error ya se registro anteriormente
+        if mensaje_final in self.errores_emitidos:
+            return
+        self.errores_emitidos.add(mensaje_final)
+        print(mensaje_final)
         self.errores += 1
 
     tokens = analizador_lexico.tokens
@@ -36,6 +44,7 @@ class analizador_sintactico(Parser):
 
     @_('PROGRAM ID sentencias_declarativas cuerpo_programa')
     def programa(self, p):
+        self.verificar_uso_variables()
         return NodoArbol(
             valor=f"PROGRAMA:{p.ID}",
             izquierdo=NodoArbol(valor="DECLARACIONES", derecho=p.sentencias_declarativas),
@@ -90,13 +99,13 @@ class analizador_sintactico(Parser):
     @_('cabecera_clase BEGIN declaracion_clase clausula_extends END')
     def declaracion_de_clase_completa(self, p):
         nombre_clase = p.cabecera_clase
-        
         padres_crudos = p.clausula_extends 
         ambito_clase = self.tabla.obtener_ambito_actual()
+        
         atributos_ordenados = []
         for clave, datos in self.tabla.tabla.items():
             if datos.get("alcance") == ambito_clase and datos.get("uso") == "variable":
-                atributos_ordenados.append(datos["lexema"])
+                atributos_ordenados.append(datos["lexema"])  # <-- Mantenemos lexema (nombres)
                 
         simbolo_clase = self.tabla.buscar(nombre_clase)
         
@@ -105,7 +114,7 @@ class analizador_sintactico(Parser):
             for padre in padres_crudos:
                 simbolo_padre = self.tabla.buscar(padre)
                 if not simbolo_padre or simbolo_padre.get("uso") != "clase":
-                    self.reportar_error(f"Error semantico: La clase padre '{padre}' no esta declarada. Linea {p.lineno}")
+                    self.reportar_error(f"Error semantico: La clase padre '{padre}' no esta declarada", p.lineno)
                 else:
                     padres_validos.append(padre)
             
@@ -113,11 +122,8 @@ class analizador_sintactico(Parser):
             simbolo_clase["atributos"] = atributos_ordenados
             
         self.tabla.cerrar_ambito()
-        return NodoArbol(
-            valor=f"CLASE:{nombre_clase}",
-            izquierdo=p.declaracion_clase,
-            derecho=NodoArbol(valor="EXTENDS", derecho=padres_crudos) if padres_crudos else None
-        )
+        metodos = [elem for elem in p.declaracion_clase if elem is not None]
+        return metodos if metodos else None
     
     @_('tipo lista_variables')
     def declaracion_variables(self, p):
@@ -125,11 +131,19 @@ class analizador_sintactico(Parser):
 
         #aca no verificamos si el tipo existe ya que es un tipo nativo que existe predefinido en la tabla de simbolos
         for identificador in p.lista_variables:
-            exito = self.tabla.insertar(identificador, 'ID', tipo=tipo_var, uso='variable')
-            
+            exito = self.tabla.insertar(
+                identificador, 
+                'ID', 
+                tipo=tipo_var, 
+                uso='variable',
+                leida=False,
+                escrita=False,
+                linea=p.lineno
+            )
+
             if not exito:
                 self.reportar_error(f"Error semantico: la variable '{identificador}' ya fue declarada en este ambito. Linea {p.lineno}")
-        return NodoArbol(valor="DECL_VARS", tipo=tipo_var, derecho=p.lista_variables)
+        return None
     
     @_('ID lista_variables')
     def declaracion_variables(self, p):
@@ -139,13 +153,23 @@ class analizador_sintactico(Parser):
         simbolo_tipo = self.tabla.buscar(tipo_custom)
         if not simbolo_tipo or simbolo_tipo.get('uso') not in ['clase', 'enumeracion']:
             self.reportar_error(f"Error semantico: el tipo '{tipo_custom}' no esta declarado o no es valido. Linea {p.lineno}")
-            
+        
+        es_escrita = (simbolo_tipo is not None and simbolo_tipo.get('uso') == 'clase')
+
         #si existe, nos fijamos si esta redeclarada o no la variable
         for identificador in p.lista_variables:
-            exito = self.tabla.insertar(identificador, 'ID', tipo=tipo_custom, uso='variable')
+            exito = self.tabla.insertar(
+                identificador, 
+                'ID', 
+                tipo=tipo_custom, 
+                uso='variable',
+                leida=False,
+                escrita=es_escrita,
+                linea=p.lineno
+            )
             if not exito:
                 self.reportar_error(f"Error semantico: la variable '{identificador}' ya fue declarada. Linea {p.lineno}")
-        return p
+        return None
 
     @_('USHORTINT', 
       'DOUBLEF')
@@ -166,8 +190,17 @@ class analizador_sintactico(Parser):
 
     @_('firma_funcion cuerpo_funcion')
     def declaracion_funcion(self, p):
+        if isinstance(p.firma_funcion, NodoArbol):
+            nombre_func = p.firma_funcion.valor.replace("FIRMA:", "")
+        else:
+            nombre_func = str(p.firma_funcion)
+        cuerpo_final = self._asegurar_retorno_en_cuerpo(nombre_func, p.cuerpo_funcion, p.lineno)
         self.tabla.cerrar_ambito()
-        return NodoArbol(valor="DECL_FUNCION", izquierdo=p.firma_funcion, derecho=p.cuerpo_funcion)
+        return NodoArbol(
+            valor="DECL_FUNCION",
+            izquierdo=p.firma_funcion,
+            derecho=cuerpo_final
+        )
 
     #dividimos la funcion en cabecera y firma para poder revisar si en el ambito padre ya se encuentra un ID (redeclaracion)
     @_('tipo FUNCTION ID')
@@ -184,16 +217,25 @@ class analizador_sintactico(Parser):
     @_('cabecera_funcion "(" parametros_formales ")" sentencias_declarativas')
     def firma_funcion(self, p):
         nombre_func = p.cabecera_funcion
-        lista_params = p.parametros_formales
+        lista_params = p.parametros_formales  # Lista de dicts: [{'nombre': 'a', 'tipo': 'USHORTINT'}, ...]
         
         simbolo_func = self.tabla.buscar(nombre_func)
-        
         if simbolo_func:
             simbolo_func["parametros"] = lista_params
+
+        # Convertimos cada diccionario en un NodoArbol homogéneo
+        nodos_params = [
+            NodoArbol(
+                valor=param['nombre'],
+                tipo=param['tipo'],
+                uso="parametro"
+            )
+            for param in (lista_params or [])
+        ]
             
         return NodoArbol(
             valor=f"FIRMA:{nombre_func}",
-            izquierdo=lista_params,
+            izquierdo=nodos_params if nodos_params else None,
             derecho=p.sentencias_declarativas
         )
     
@@ -211,7 +253,15 @@ class analizador_sintactico(Parser):
 
     @_('tipo ID')
     def lista_parametros(self, p):
-        exito = self.tabla.insertar(p.ID, 'ID', tipo=p.tipo, uso='parametro')
+        exito = self.tabla.insertar(
+            p.ID, 
+            'ID', 
+            tipo=p.tipo, 
+            uso='parametro',
+            leida=False,
+            escrita=True,
+            linea=p.lineno
+        )
         if not exito:
             self.reportar_error(f"Error semantico: parametro '{p.ID}' redeclarado. Linea {p.lineno}")
         
@@ -219,7 +269,15 @@ class analizador_sintactico(Parser):
 
     @_('lista_parametros "," tipo ID')
     def lista_parametros(self, p):
-        exito = self.tabla.insertar(p.ID, 'ID', tipo=p.tipo, uso='parametro')
+        exito = self.tabla.insertar(
+            p.ID, 
+            'ID', 
+            tipo=p.tipo, 
+            uso='parametro',
+            leida=False,
+            escrita=True,
+            linea=p.lineno
+        )
         if not exito:
             self.reportar_error(f"Error semantico: parametro '{p.ID}' redeclarado. Linea {p.lineno}")
         
@@ -286,11 +344,12 @@ class analizador_sintactico(Parser):
 
     @_('firma_metodo cuerpo_funcion')
     def declaracion_metodo(self, p):
+        nombre_met = p.firma_metodo['nombre']
+        cuerpo_final = self._asegurar_retorno_en_cuerpo(nombre_met, p.cuerpo_funcion, p.lineno)
         self.tabla.cerrar_ambito()
         return NodoArbol(
-            valor=f"METODO:{p.firma_metodo['nombre']}", 
-            izquierdo=p.firma_metodo, 
-            derecho=p.cuerpo_funcion
+            valor=f"METODO:{nombre_met}",
+            derecho=cuerpo_final
         )
     
     @_('cabecera_metodo "(" parametros_formales ")"')
@@ -367,103 +426,127 @@ class analizador_sintactico(Parser):
     def cuerpo_sentencia_ejecutable(self, p):
         return NodoArbol(valor="REPEAT", izquierdo=p.bloque_ejecutable, derecho=p.condicion_parentesis)
 
+    def _obtener_tipos_atributos(self, nombre_clase):
+        simbolo_clase = self.tabla.buscar(nombre_clase)
+        if not simbolo_clase or simbolo_clase.get("uso") != "clase":
+            return []
+
+        tipos = []
+        # 1. Primero recolectamos en orden los tipos heredados de las clases padre
+        for padre in simbolo_clase.get("herencia", []):
+            tipos.extend(self._obtener_tipos_atributos(padre))
+
+        # 2. Luego recolectamos los tipos de los atributos propios de esta clase
+        alcance_clase = f"{simbolo_clase['alcance']}:{nombre_clase}"
+        for nombre_attr in simbolo_clase.get("atributos", []):
+            simb_attr = self.tabla.obtener(nombre_attr, alcance=alcance_clase)
+            if simb_attr:
+                tipos.append(simb_attr["tipo"])
+
+        return tipos
+
     def _son_tipos_compatibles(self, tipo_izq, tipo_der):
         if tipo_izq == tipo_der or "ERROR" in [tipo_izq, tipo_der]:
             return True
-            
+
         simbolo_izq = self.tabla.buscar(tipo_izq)
         simbolo_der = self.tabla.buscar(tipo_der)
-        
+
         if not simbolo_izq or not simbolo_der:
             return False
         if simbolo_izq.get("uso") != "clase" or simbolo_der.get("uso") != "clase":
             return False
-            
-        atributos_izq = simbolo_izq.get("atributos", [])
-        atributos_der = simbolo_der.get("atributos", [])
-        
-        if len(atributos_izq) != len(atributos_der):
+
+        tipos_izq = self._obtener_tipos_atributos(tipo_izq)
+        tipos_der = self._obtener_tipos_atributos(tipo_der)
+
+        if len(tipos_izq) != len(tipos_der):
             return False
-            
-        alcance_izq = f"{simbolo_izq['alcance']}:{tipo_izq}"
-        alcance_der = f"{simbolo_der['alcance']}:{tipo_der}"
-        
-        for nombre_attr_i, nombre_attr_d in zip(atributos_izq, atributos_der):
-            simb_attr_i = self.tabla.obtener(nombre_attr_i, alcance=alcance_izq)
-            simb_attr_d = self.tabla.obtener(nombre_attr_d, alcance=alcance_der)
-            
-            if not simb_attr_i or not simb_attr_d:
+
+        # Usamos recursividad para soportar tanto tipos primitivos como atributos que sean otras clases
+        for t_i, t_d in zip(tipos_izq, tipos_der):
+            if not self._son_tipos_compatibles(t_i, t_d):
                 return False
-                
-            if simb_attr_i["tipo"] != simb_attr_d["tipo"]:
-                return False
-                
+
         return True
     
     @_('lado_izquierdo ASIGNACION_PUNTO expresion')
     def asignacion_punto(self, p):
         nodo_izq = p.lado_izquierdo
         nodo_der = p.expresion
-        
-        #verificacion de que el lado izquierdo sea un elemento del lenguaje valido al que se le puede asignar
-        if nodo_izq.uso not in ['variable', 'parametro'] and nodo_izq.uso != "ERROR":
-            self.reportar_error(f"Error semantico: No se puede asignar a un/a {nodo_izq.uso}. Linea {p.lineno}")
-        
-        #validacion de igualdad de tipos para asignacion
-        if not self._son_tipos_compatibles(nodo_izq.tipo, nodo_der.tipo):
-            self.reportar_error(f"Error Semantico: Incompatibilidad de tipos en asignacion (:=). No se puede asignar '{nodo_der.tipo}' a '{nodo_izq.tipo}'. Linea {p.lineno}")
-            
-        simbolo_tipo_izq = self.tabla.buscar(nodo_izq.tipo)
-        
-        #validacion de enumerado cuando los tipos son constantes que se pueden verificar en tiempo de compilacion
-        if simbolo_tipo_izq and simbolo_tipo_izq.get("uso") == "enumeracion":
-            
-            if nodo_der.uso == 'constante' or str(nodo_der.valor).isupper(): 
-                valores_permitidos = simbolo_tipo_izq.get("valores", [])
-                
-                if nodo_der.valor not in valores_permitidos:
-                    self.reportar_error(f"Error Semantico (Tema 23): El valor '{nodo_der.valor}' no es valido para la enumeracion '{nodo_izq.tipo}'. Permitidos: {valores_permitidos}. Linea {p.lineno}")
-        
-        return NodoArbol(valor=":=", izquierdo=nodo_izq, derecho=nodo_der, tipo=nodo_izq.tipo)
+        tipo_res = self._validar_asignacion(nodo_izq, nodo_der, ":=", p.lineno)
+        return NodoArbol(valor=":=", izquierdo=nodo_izq, derecho=nodo_der, tipo=tipo_res)
 
     @_('lado_izquierdo ASIGNACION_IGUAL expresion')
     def asignacion_igual(self, p):
-        nodo_izq = p.lado_izquierdo 
+        nodo_izq = p.lado_izquierdo
         nodo_der = p.expresion
 
-        lado_derecho = (
-            nodo_der.valor in ["USHORTINT", "DOUBLEF", "CADENA"] or
-            self.tabla.buscar(nodo_der.valor) is not None
-        )
-
-        es_id_o_constante = nodo_der.categoria in ["variable", "constante"]
-        if not lado_derecho:
-            self.reportar_error_semantico(f"Error Semántico: En asignaciones con '=' dentro de expresiones, el lado derecho debe ser un identificador o constante, no un/a '{nodo_der.valor}'. Linea {p.lineno}")
+        es_id_o_constante = getattr(nodo_der, 'uso', None) in ["variable", "parametro", "constante"]
+        
+        if not es_id_o_constante and nodo_der.tipo != "ERROR":
+            self.reportar_error(
+                f"Error Semántico: En asignaciones con '=' dentro de expresiones, el lado derecho debe ser un identificador o constante, no un/a '{nodo_der.valor}'",
+                p.lineno
+            )
             tipo_resultado = "ERROR"
         else:
-            if nodo_izq.tipo != nodo_der.tipo:
-                self.reportar_error_semantico(
-                    f"Error Semántico: Tipos incompatibles en asignación '=' ('{nodo_izq.tipo}' y '{nodo_der.tipo}')", 
-                    p.lineno
-                )
-                tipo_resultado = "ERROR"
-            else:
-                tipo_resultado = nodo_izq.tipo
+            tipo_resultado = self._validar_asignacion(nodo_izq, nodo_der, "=", p.lineno)
 
         return NodoArbol(valor="=", izquierdo=nodo_izq, derecho=nodo_der, tipo=tipo_resultado)
+    
+    def _validar_asignacion(self, nodo_izq, nodo_der, operador, linea):
+        if nodo_izq.uso not in ['variable', 'parametro'] and nodo_izq.uso != "ERROR":
+            self.reportar_error(f"Error semantico: No se puede asignar a un/a {nodo_izq.uso}", linea)
+            return "ERROR"
+
+        if not self._son_tipos_compatibles(nodo_izq.tipo, nodo_der.tipo):
+            self.reportar_error(
+                f"Error Semantico: Incompatibilidad de tipos en asignacion ({operador}). No se puede asignar '{nodo_der.tipo}' a '{nodo_izq.tipo}'",
+                linea
+            )
+            return "ERROR"
+
+        simbolo_tipo_izq = self.tabla.buscar(nodo_izq.tipo)
+        if simbolo_tipo_izq and simbolo_tipo_izq.get("uso") == "enumeracion":
+            if nodo_der.uso == 'constante' or str(nodo_der.valor).isupper():
+                valores_permitidos = simbolo_tipo_izq.get("valores", [])
+                if nodo_der.valor not in valores_permitidos:
+                    self.reportar_error(
+                        f"Error Semantico: El valor '{nodo_der.valor}' no es valido para la enumeracion '{nodo_izq.tipo}'. Permitidos: {valores_permitidos}",
+                        linea
+                    )
+                    return "ERROR"
+
+        if nodo_izq.tipo != "ERROR":
+            simbolo_izq = self.tabla.buscar(nodo_izq.valor)
+            if simbolo_izq:
+                simbolo_izq['escrita'] = True
+
+        return nodo_izq.tipo
     
     @_('ID')
     def lado_izquierdo(self, p):
         simbolo = self.tabla.buscar(p.ID)
         
         if not simbolo:
-            self.reportar_error(f"Error semantico: la variable '{p.ID}' no fue declarada. Linea {p.lineno}")
+            self.reportar_error(f"Error semantico: la variable '{p.ID}' no fue declarada", p.lineno)
             return NodoArbol(valor=p.ID, tipo="ERROR", uso="ERROR")
-            
-        #tipo y uso se pasan al nodo para que haga las verificaciones
-        #los nodos hoja unicamente aportan la informacion necesaria para que los padres verifiquen
-        return NodoArbol(valor=p.ID, tipo=simbolo["tipo"], uso=simbolo["uso"])
 
+        return NodoArbol(valor=p.ID, tipo=simbolo["tipo"], uso=simbolo["uso"])
+    
+    def _registrar_lectura(self, nodo, linea):
+        if not isinstance(nodo, NodoArbol) or nodo.tipo == "ERROR":
+            return
+
+        if nodo.uso in ['variable', 'parametro']:
+            simbolo = self.tabla.buscar(nodo.valor)
+            if simbolo:
+                if not simbolo.get('escrita', False):
+                    self.reportar_warning(f"Warning: Uso de variable '{nodo.valor}' sin haber sido inicializada", linea)
+                
+                # 2. Marcamos que fue leída
+                simbolo['leida'] = True
 
     @_('ID "." ID')
     def lado_izquierdo(self, p):
@@ -476,7 +559,6 @@ class analizador_sintactico(Parser):
         )
         
         return NodoArbol(valor=".", izquierdo=NodoArbol(valor=p.ID0), derecho=NodoArbol(valor=nombre_attr), tipo=tipo_attr, uso=uso_attr)
-
 
     @_('ID "[" CTE_USHORTINT "]"')
     def lado_izquierdo(self, p):
@@ -569,7 +651,9 @@ class analizador_sintactico(Parser):
     # ---------------- EXPRESIONES ARITMETICAS ----------------
 
     def _procesar_operacion_binaria(self, op, izq, der, linea):
-    # Verificación del Tema 33 (Conversión explícita requerida)
+        if "ERROR" in [izq.tipo, der.tipo]:
+            return NodoArbol(valor=op, izquierdo=izq, derecho=der, tipo="ERROR")
+
         if izq.tipo != der.tipo:
             self.reportar_error(
                 f"Error Semántico: Tipos incompatibles para '{op}' ('{izq.tipo}' y '{der.tipo}'). "
@@ -579,7 +663,7 @@ class analizador_sintactico(Parser):
             tipo_res = "ERROR"
         else:
             tipo_res = izq.tipo
-
+        
         return NodoArbol(valor=op, izquierdo=izq, derecho=der, tipo=tipo_res)
 
 
@@ -613,7 +697,20 @@ class analizador_sintactico(Parser):
                 f"No se puede usar un/a {nodo_izq.uso} como valor. Linea {p.lineno}"
             )
             nodo_izq.tipo = "ERROR"
+        self._registrar_lectura(p.lado_izquierdo, p.lineno)
         return nodo_izq
+    
+    def reportar_warning(self, mensaje, linea=None):
+        if linea is not None and f"Linea {linea}" not in str(mensaje):
+            mensaje_final = f"{mensaje}. Linea {linea}"
+        else:
+            mensaje_final = str(mensaje)
+
+        if mensaje_final in self.warnings_emitidos:
+            return
+
+        self.warnings_emitidos.add(mensaje_final)
+        print(mensaje_final)
 
     @_('asignacion_igual',
        'llamado_funcion')
@@ -729,6 +826,96 @@ class analizador_sintactico(Parser):
     @_('expresion')
     def parametros_reales(self, p):
         return [p.expresion]
+    
+    def verificar_uso_variables(self):
+        for clave, datos in self.tabla.tabla.items():
+            uso = datos.get("uso")
+            if uso not in ["variable", "parametro"]:
+                continue
+
+            # 1. Excluir atributos declarados dentro de una clase
+            alcance = datos.get("alcance", "")
+            partes_alcance = alcance.split(":")
+            if len(partes_alcance) > 1:
+                padre_alcance = self.tabla.buscar(partes_alcance[-1])
+                if padre_alcance and padre_alcance.get("uso") == "clase":
+                    continue
+
+            leida = datos.get("leida", False)
+            escrita = datos.get("escrita", False)
+            linea = datos.get("linea", "?")
+            nombre_mostrar = datos.get("lexema", clave)
+
+            # Verificamos si la variable es una instancia de una clase
+            simbolo_tipo = self.tabla.buscar(datos.get("tipo"))
+            es_objeto_clase = (simbolo_tipo is not None and simbolo_tipo.get("uso") == "clase")
+
+            if uso == "parametro":
+                if not leida and not escrita:
+                    self.reportar_warning(f"WARNING (Línea {linea}): El parámetro '{clave}' fue declarado pero nunca se utilizó.")
+                continue
+
+            if not leida and (not escrita or es_objeto_clase):
+                self.reportar_warning(f"WARNING (Línea {linea}): La variable '{clave}' fue declarada pero nunca utilizada.")
+            elif escrita and not leida and not es_objeto_clase:
+                self.reportar_warning(f"WARNING (Línea {linea}): La variable '{clave}' fue asignada pero su valor nunca fue leído.")
+    
+    def _contiene_retorno(self, nodo):
+        if nodo is None:
+            return False
+        if isinstance(nodo, list):
+            return any(self._contiene_retorno(hijo) for hijo in nodo)
+        if not isinstance(nodo, NodoArbol):
+            return False
+        if nodo.valor == "RET":
+            return True
+        return self._contiene_retorno(nodo.izquierdo) or self._contiene_retorno(nodo.derecho)
+    
+    def _crear_retorno_por_defecto(self, tipo_retorno, linea):
+        # 1. Tipos primitivos
+        if tipo_retorno == "USHORTINT":
+            valor_defecto = NodoArbol(valor="0$us", tipo="USHORTINT", uso="constante")
+            return NodoArbol(valor="RET", izquierdo=valor_defecto, tipo="USHORTINT")
+            
+        elif tipo_retorno == "DOUBLEF":
+            valor_defecto = NodoArbol(valor="0.0", tipo="DOUBLEF", uso="constante")
+            return NodoArbol(valor="RET", izquierdo=valor_defecto, tipo="DOUBLEF")
+            
+        elif tipo_retorno == "CADENA":
+            valor_defecto = NodoArbol(valor='""', tipo="CADENA", uso="constante")
+            return NodoArbol(valor="RET", izquierdo=valor_defecto, tipo="CADENA")
+
+        simbolo_tipo = self.tabla.buscar(tipo_retorno)
+        if simbolo_tipo:
+            if simbolo_tipo.get("uso") == "enumeracion":
+                valores = simbolo_tipo.get("valores", [])
+                if valores:
+                    valor_defecto = NodoArbol(valor=valores[0], tipo=tipo_retorno, uso="constante")
+                    return NodoArbol(valor="RET", izquierdo=valor_defecto, tipo=tipo_retorno)
+            
+            elif simbolo_tipo.get("uso") == "clase":
+                self.reportar_error(
+                    f"Error semantico: La funcion retorna la clase '{tipo_retorno}' y requiere una sentencia RET explicita",
+                    linea
+                )
+                return NodoArbol(valor="RET", tipo="ERROR")
+
+        return NodoArbol(valor="RET", tipo="ERROR")
+    
+    def _asegurar_retorno_en_cuerpo(self, nombre_subprograma, cuerpo, linea):
+        if self._contiene_retorno(cuerpo):
+            return cuerpo
+
+        simbolo = self.tabla.buscar(nombre_subprograma)
+        tipo_ret = simbolo.get("tipo") if simbolo else "ERROR"
+        nodo_ret = self._crear_retorno_por_defecto(tipo_ret, linea)
+
+        if cuerpo is None:
+            return [nodo_ret]
+        elif isinstance(cuerpo, list):
+            return cuerpo + [nodo_ret]
+        else:
+            return [cuerpo, nodo_ret]
 
  # TRATAMIENTO DE ERRORES
     def error(self, p):
@@ -893,7 +1080,6 @@ class analizador_sintactico(Parser):
         self.reportar_error(f"Error sintactico: bloque 'ELSE' invalido. Linea {p.lineno}")
         return ('ERROR_RECUPERADO',)
 
-    
 if __name__ == '__main__':
     print("AVISO: LA COMPILACION SE REALIZA DE ARRIBA HACIA ABAJO, SE RECOMIENDA TRATAR PRIMERO LOS ERRORES DE ARRIBA DEL TODO.")
 
@@ -919,12 +1105,7 @@ if __name__ == '__main__':
             
         print("-" * 65)
         
-        total_errores = lexer.errores + parser.errores
-        
-        if total_errores == 0:
-            print("Se ha compilado exitosamente.")
-            
-        # Impresión opcional de la Tabla de Símbolos (descomentar si se requiere)
+        # Impresión de la Tabla de Símbolos (requerida en las salidas del TP4)
         parser.tabla.imprimir()
 
         # Impresión opcional del Árbol Sintáctico (AST)
@@ -935,6 +1116,19 @@ if __name__ == '__main__':
             else:
                 pprint(arbol, indent=2, width=80)
             print("=" * 78)
+
+        total_errores = lexer.errores + parser.errores
+        
+        if arbol is not None and total_errores == 0:
+            print("\nSe ha compilado exitosamente.")
+            generador = generador_assembler(parser.tabla)
+            codigo_wat = generador.generar(arbol)
+
+            with open("salida.wat", "w", encoding="utf-8") as archivo_salida:
+                archivo_salida.write(codigo_wat)
+            print("Codigo WebAssembly generado exitosamente en 'salida.wat'.")
+        else:
+            print("\nNo se genero codigo WebAssembly debido a errores de compilacion.")
             
     except FileNotFoundError:
         print(f"Error: No se encontró el archivo '{nombre_archivo}'.")

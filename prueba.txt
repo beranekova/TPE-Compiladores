@@ -1,23 +1,44 @@
-PROGRAM prueba
-    class clase1
+program prueba_tp3
+
+    ushortint x;
+
+    doublef y;
+
+    class clase_a
     BEGIN
-        ushortint atributo1;
+        ushortint papepo;
+        ushortint calcular(ushortint x)
+        BEGIN
+            papepo := x + 1$us;
+        end;
+    end;
+    
+    ushortint function calcular(ushortint x)
+    BEGIN
+        x := x + 1$us;
     end;
 
-    class clase2
-    BEGIN
-        doublef atributo1;
-    end;
-
-    clase1 objeto1;
-
-    clase2 objeto2;
-
-    USHORTINT FUNCTION aa (USHORTINT a)
-    BEGIN
-        a := 1$us;
-        RET a;
-    END;
+    clase_a obj_a;
 BEGIN
-    objeto1 := objeto2;
+    x := 1$us;
+
+    IF (x < 2$us)
+        begin
+            x := 7$us;
+        end
+    else
+        begin
+            x := 7$us;
+        end
+    end_if;
+
+    repeat 
+        BEGIN
+            x := obj_a.calcular(x);
+        end 
+    WHILE (x < 3$us);
+
+    x := calcular(x);
+    y := todf(x);
+    pout (y);
 END
