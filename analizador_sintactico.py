@@ -372,11 +372,11 @@ class analizador_sintactico(Parser):
 
     @_('lista_valores "," CTE_USHORTINT')
     def lista_valores(self, p):
-        return p
+        return p.lista_valores + [p[2]]
 
     @_('CTE_USHORTINT')
     def lista_valores(self, p):
-        return p
+        return [p[0]]
 
     #-----------------------// FIN DE SENTENCIAS DECLARATIVAS //-----------------------
 
@@ -450,6 +450,10 @@ class analizador_sintactico(Parser):
             return True
 
         simbolo_izq = self.tabla.buscar(tipo_izq)
+
+        if simbolo_izq and simbolo_izq.get("uso") == "enumeracion" and tipo_der == "USHORTINT":
+            return True
+        
         simbolo_der = self.tabla.buscar(tipo_der)
 
         if not simbolo_izq or not simbolo_der:
@@ -462,8 +466,7 @@ class analizador_sintactico(Parser):
 
         if len(tipos_izq) != len(tipos_der):
             return False
-
-        # Usamos recursividad para soportar tanto tipos primitivos como atributos que sean otras clases
+        
         for t_i, t_d in zip(tipos_izq, tipos_der):
             if not self._son_tipos_compatibles(t_i, t_d):
                 return False

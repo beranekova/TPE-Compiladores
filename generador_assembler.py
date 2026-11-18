@@ -5,24 +5,18 @@ class generador_assembler:
         self.indentacion = 0
         self.contador_aux = 0
         self.contador_etiquetas = 0
-        self.locales_actuales = []      # Lista de strings "(local $nombre tipo)"
-        self.locales_declaradas = set() # Evita declarar dos veces el mismo (local ...)
-        self.globales_recursion = []    # Control 'i': flags globales por función/método
+        self.locales_actuales = []
+        self.locales_declaradas = set()
+        self.globales_recursion = []
 
-        # Tabla de strings estáticos para (data (i32.const offset) "...")
         self.offset_data = 0
         self.strings_data = []
         self.mapa_strings = {}
 
-        # Registramos de entrada los 4 mensajes de error del grupo DEHI
-        self.err_ovf_int = self._registrar_string("ERROR DE EJECUCION (d): Overflow en producto de enteros (USHORTINT > 65535)")
+        self.err_ovf_int = self._registrar_string("ERROR DE EJECUCION (d): Overflow en producto de enteros (USHORTINT > 255)")
         self.err_ovf_flt = self._registrar_string("ERROR DE EJECUCION (e): Overflow en producto de punto flotante (DOUBLEF)")
         self.err_enum    = self._registrar_string("ERROR DE EJECUCION (h): Asignacion invalida fuera de rango en enumeracion")
         self.err_rec     = self._registrar_string("ERROR DE EJECUCION (i): Recursion detectada en invocacion de funcion")
-
-    # =========================================================================
-    # HELPERS DE EMISIÓN, AUXILIARES, ETIQUETAS Y STRINGS
-    # =========================================================================
 
     def _emitir(self, linea):
         self.codigo.append("  " * self.indentacion + linea)
@@ -166,6 +160,11 @@ class generador_assembler:
         self.locales_declaradas = set()
         self.indentacion = 1
 
+        if not hasattr(nodo, "valor") or not isinstance(nodo.valor, str):
+            return []
+        if not (nodo.valor.startswith("FUNCION:") or nodo.valor.startswith("METODO:")):
+            return []
+        
         es_metodo = nodo.valor.startswith("METODO:")
         if es_metodo:
             nombre_raw = nodo.valor.replace("METODO:", "")
@@ -390,22 +389,22 @@ class generador_assembler:
         for s in self._aplanar_nodos(bloque):
             self._generar_sentencia(s, ambito, flag_recursion)
 
-    def _emitir_chequeo_enum(self, nombre_enum):
-        """Control (h): Verifica en runtime que el tope de la pila esté entre los valores del ENUM."""
-        sim_enum = self.tabla.buscar(nombre_enum)
-        valores_permitidos = sim_enum.get("valores", []) if sim_enum else []
-        aux_val = self._nuevo_aux("i32")
-        self._emitir(f"local.set {aux_val}")
+    def _emitir_chequeo_enum(self, tipo_enum):
+        sim_enum = self.tabla.buscar(tipo_enum)
+        valores_raw = sim_enum.get("valores", []) if sim_enum else []
+        valores_int = [int(str(v).replace("$us", "")) for v in valores_raw]
 
-        lbl_valido = self._nueva_etiqueta("enum_ok")
-        self._emitir(f"(block {lbl_valido}")
+        aux_val = self._nuevo_aux("i32")
+        lbl_ok = self._nueva_etiqueta("enum_ok")
+
+        self._emitir(f"local.set {aux_val}")
+        self._emitir(f"(block {lbl_ok}")
         self.indentacion += 1
-        for idx, _ in enumerate(valores_permitidos):
+        for val_permitido in valores_int:
             self._emitir(f"local.get {aux_val}")
-            self._emitir(f"i32.const {idx}")
+            self._emitir(f"i32.const {val_permitido}")
             self._emitir("i32.eq")
-            self._emitir(f"br_if {lbl_valido}")
-        # Si no coincidió con ninguno, aborta
+            self._emitir(f"br_if {lbl_ok}")
         self._emitir_error_runtime(self.err_enum)
         self.indentacion -= 1
         self._emitir(")")
@@ -435,11 +434,6 @@ class generador_assembler:
                 texto_limpio = val.strip('"')
                 offset, _ = self._registrar_string(texto_limpio)
                 self._emitir(f"i32.const {offset}")
-            elif self._es_enumeracion(tipo):
-                sim_enum = self.tabla.buscar(tipo)
-                valores = sim_enum.get("valores", []) if sim_enum else []
-                idx = valores.index(val) if val in valores else 0
-                self._emitir(f"i32.const {idx}")
             return
 
         # --- VARIABLES / PARÁMETROS ---
@@ -500,18 +494,20 @@ class generador_assembler:
                     self._emitir("i32.sub")
                 elif val == "*":
                     self._emitir("i32.mul")
+                    # CONTROL (d): Overflow en producto de enteros sin signo (> 65535)
                     aux_res = self._nuevo_aux("i32")
                     lbl_ok = self._nueva_etiqueta("mul_int_ok")
+                    self._emitir(f"local.set {aux_res}")      # <-- Guardamos ANTES de abrir el block
                     self._emitir(f"(block {lbl_ok}")
                     self.indentacion += 1
-                    self._emitir(f"local.tee {aux_res}")
-                    self._emitir("i32.const 65535")
+                    self._emitir(f"local.get {aux_res}")      # <-- Leemos ADENTRO del block
+                    self._emitir("i32.const 255")
                     self._emitir("i32.le_u")
                     self._emitir(f"br_if {lbl_ok}")
                     self._emitir_error_runtime(self.err_ovf_int)
                     self.indentacion -= 1
                     self._emitir(")")
-                    self._emitir(f"local.get {aux_res}")
+                    self._emitir(f"local.get {aux_res}")      # <-- Dejamos el resultado válido en la pila
                 elif val == "/":
                     self._emitir("i32.div_u")
 
@@ -522,11 +518,13 @@ class generador_assembler:
                     self._emitir("f64.sub")
                 elif val == "*":
                     self._emitir("f64.mul")
+                    # CONTROL (e): Overflow en producto de punto flotante (abs(res) == inf)
                     aux_res = self._nuevo_aux("f64")
                     lbl_ok = self._nueva_etiqueta("mul_flt_ok")
+                    self._emitir(f"local.set {aux_res}")      # <-- Guardamos ANTES de abrir el block
                     self._emitir(f"(block {lbl_ok}")
                     self.indentacion += 1
-                    self._emitir(f"local.tee {aux_res}")
+                    self._emitir(f"local.get {aux_res}")      # <-- Leemos ADENTRO del block
                     self._emitir("f64.abs")
                     self._emitir("f64.const inf")
                     self._emitir("f64.lt")
@@ -534,7 +532,7 @@ class generador_assembler:
                     self._emitir_error_runtime(self.err_ovf_flt)
                     self.indentacion -= 1
                     self._emitir(")")
-                    self._emitir(f"local.get {aux_res}")
+                    self._emitir(f"local.get {aux_res}")      # <-- Dejamos el resultado válido en la pila
                 elif val == "/":
                     self._emitir("f64.div")
             return

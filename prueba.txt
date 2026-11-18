@@ -1,44 +1,9 @@
-program prueba_tp3
-
+program test_h_runtime
+    typedef color = [1$us, 15$us, 255$us];
+    color c;
     ushortint x;
-
-    doublef y;
-
-    class clase_a
-    BEGIN
-        ushortint papepo;
-        ushortint calcular(ushortint x)
-        BEGIN
-            papepo := x + 1$us;
-        end;
-    end;
-    
-    ushortint function calcular(ushortint x)
-    BEGIN
-        x := x + 1$us;
-    end;
-
-    clase_a obj_a;
 BEGIN
-    x := 1$us;
-
-    IF (x < 2$us)
-        begin
-            x := 7$us;
-        end
-    else
-        begin
-            x := 7$us;
-        end
-    end_if;
-
-    repeat 
-        BEGIN
-            x := obj_a.calcular(x);
-        end 
-    WHILE (x < 3$us);
-
-    x := calcular(x);
-    y := todf(x);
-    pout (y);
+    x := 23$us;
+    c := x;
+    pout(c);
 END
