@@ -1,9 +1,10 @@
 program test_h_runtime
-    typedef color = [1$us, 15$us, 255$us];
-    color c;
     ushortint x;
+    doublef y;
 BEGIN
-    x := 23$us;
-    c := x;
-    pout(c);
+    x:=1$us;
+    pout(x);
+    y := todf(x);
+    pout(y);
+    pout(x);
 END

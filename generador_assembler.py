@@ -18,54 +18,62 @@ class generador_assembler:
         self.err_enum    = self._registrar_string("ERROR DE EJECUCION (h): Asignacion invalida fuera de rango en enumeracion")
         self.err_rec     = self._registrar_string("ERROR DE EJECUCION (i): Recursion detectada en invocacion de funcion")
 
+    #----------Estructura del codigo generado----------
+
+    #control de identacion y escritura de codigo
     def _emitir(self, linea):
         self.codigo.append("  " * self.indentacion + linea)
 
+    #etiquetas
     def _nueva_etiqueta(self, prefijo="lbl"):
         self.contador_etiquetas += 1
         return f"${prefijo}_{self.contador_etiquetas}"
 
+    #variables auxiliares
     def _nuevo_aux(self, tipo_wasm):
         self.contador_aux += 1
         nombre = f"$__aux_{self.contador_aux}"
         self._declarar_local(nombre, tipo_wasm)
         return nombre
 
+    #declaracion de variables locales para cada ambito
     def _declarar_local(self, nombre_wasm, tipo_wasm):
         if nombre_wasm not in self.locales_declaradas:
             self.locales_declaradas.add(nombre_wasm)
             self.locales_actuales.append(f"(local {nombre_wasm} {tipo_wasm})")
 
+    #conversion de tipos del lenguaje a tipos de WebAssembly
     def _tipo_a_wasm(self, tipo_lenguaje):
         if tipo_lenguaje in ["USHORTINT", "BOOLEAN"] or self._es_enumeracion(tipo_lenguaje):
             return "i32"
         elif tipo_lenguaje == "DOUBLEF":
             return "f64"
         elif tipo_lenguaje == "CADENA":
-            return "i32"  # Guarda el offset en memoria lineal
+            return "i32"
         return "i32"
 
+    #chequeos de rangos y valores para enumeraciones
     def _es_enumeracion(self, nombre_tipo):
         sim = self.tabla.buscar(nombre_tipo)
         return sim is not None and sim.get("uso") == "enumeracion"
 
+    #chequeos de tipos y herencia para clases
     def _es_clase(self, nombre_tipo):
         sim = self.tabla.buscar(nombre_tipo)
         return sim is not None and sim.get("uso") == "clase"
 
+    #devuelve una lista ordenada con nombre_atributo, tipo y herencia para la clase
     def _obtener_atributos_clase(self, nombre_clase):
-        """Devuelve lista ordenada de tuplas (nombre_attr, tipo_attr) incluyendo herencia."""
         atributos = []
         sim_clase = self.tabla.buscar(nombre_clase)
         if not sim_clase:
             return atributos
 
-        # Si hereda de otra clase, primero agregamos los del padre
+        # primero metemos los atributos heradados
         padre = sim_clase.get("padre") or sim_clase.get("extends")
         if padre:
             atributos.extend(self._obtener_atributos_clase(padre))
 
-        # Buscamos los atributos propios en la Tabla de Símbolos
         for clave, datos in self.tabla.tabla.items():
             if datos.get("uso") == "variable":
                 alcance = datos.get("alcance", "")
@@ -73,12 +81,13 @@ class generador_assembler:
                     atributos.append((datos.get("lexema", clave.split(":")[0]), datos.get("tipo")))
         return atributos
 
+    #administracion de strings (cadenas de literales) en memoria lineal
     def _registrar_string(self, texto):
+        #evitar duplicados y retornar offset y longitud
         if texto in self.mapa_strings:
             return self.mapa_strings[texto]
         offset = self.offset_data
-        longitud = len(texto.encode("utf-8"))
-        # Escapamos comillas si hubiera
+        longitud = len(texto.encode("utf-8")) #codificado a utf-8 para contar bytes reales
         texto_escapado = texto.replace('"', '\\"')
         self.strings_data.append(f'(data (i32.const {offset}) "{texto_escapado}")')
         self.mapa_strings[texto] = (offset, longitud)
@@ -91,10 +100,6 @@ class generador_assembler:
         self._emitir(f"i32.const {longitud}")
         self._emitir("call $imprime")
         self._emitir("unreachable")
-
-    # =========================================================================
-    # PUNTO DE ENTRADA PRINCIPAL
-    # =========================================================================
 
     def generar(self, nodo_raiz):
         cuerpo_funciones = []
@@ -131,10 +136,6 @@ class generador_assembler:
 
         salida.append(")")
         return "\n".join(salida)
-
-    # =========================================================================
-    # GENERACIÓN DE MAIN Y SUBPROGRAMAS (CON CONTROL 'i': RECURSIÓN)
-    # =========================================================================
 
     def _generar_main(self, nodo_ejec):
         self.codigo = []
