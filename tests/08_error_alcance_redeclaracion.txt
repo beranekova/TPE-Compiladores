@@ -1,0 +1,13 @@
+program test_alcance
+    ushortint x;
+    ushortint x;
+
+    ushortint function f()
+        ushortint local_f;
+    BEGIN
+        local_f := 1$us;
+    end;
+BEGIN
+    no_declarada := 5$us;
+    local_f := 2$us;
+END

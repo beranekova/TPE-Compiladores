@@ -1,0 +1,34 @@
+program test_clases_compatibles
+    class clase_a
+    BEGIN
+        ushortint x;
+        doublef y;
+    END;
+
+    class clase_b
+    BEGIN
+        ushortint a;
+        doublef b;
+    END;
+
+    class clase_c
+    BEGIN
+        ushortint m;
+        ushortint n;
+    END;
+
+    clase_a obj_a;
+    clase_b obj_b;
+    clase_c obj_c;
+
+BEGIN
+    obj_a.x := 10$us;
+    obj_a.y := 25.5;
+
+    obj_b := obj_a;
+
+    pout(obj_b.a);
+    pout(obj_b.b);
+
+    {{obj_c := obj_a;}}
+END

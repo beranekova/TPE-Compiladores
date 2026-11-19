@@ -163,7 +163,7 @@ class generador_assembler:
 
         if not hasattr(nodo, "valor") or not isinstance(nodo.valor, str):
             return []
-        if not (nodo.valor.startswith("FUNCION:") or nodo.valor.startswith("METODO:")):
+        if not (nodo.valor.startswith("DECL_FUNCION") or nodo.valor.startswith("METODO:")):
             return []
         
         es_metodo = nodo.valor.startswith("METODO:")
@@ -184,7 +184,6 @@ class generador_assembler:
                     params_nodos.append((f"${p['nombre']}", self._tipo_a_wasm(p["tipo"])))
             tipo_retorno_wasm = self._tipo_a_wasm(sim_met.get("tipo")) if sim_met else "i32"
         else:
-            # DECL_FUNCION
             firma = nodo.izquierdo
             nombre_raw = firma.valor.replace("FIRMA:", "")
             nombre_wasm = f"${nombre_raw}"
@@ -204,7 +203,6 @@ class generador_assembler:
         # Declarar variables locales propias de la función/método
         self._declarar_variables_de_ambito(ambito_sub, excluir_params={p[0] for p in params_nodos})
 
-        # CONTROL (i): Detección de recursión en tiempo de ejecución
         flag_rec = f"$rec_{nombre_wasm[1:]}"
         self.globales_recursion.append(f"(global {flag_rec} (mut i32) (i32.const 0))")
 
@@ -276,10 +274,11 @@ class generador_assembler:
                     self._emitir(f"local.set ${izq.valor}_{a_dest}")
                 return
 
-            # Caso 2: Asignación a atributo de objeto (obj.attr := expr)
             if izq.valor == ".":
                 destino_wasm = f"${izq.izquierdo.valor}_{izq.derecho.valor}"
                 self._generar_expresion(der)
+                if self._es_enumeracion(izq.tipo):
+                    self._emitir_chequeo_enum(izq.tipo)
                 self._emitir(f"local.set {destino_wasm}")
                 return
 
@@ -436,15 +435,15 @@ class generador_assembler:
                 offset, _ = self._registrar_string(texto_limpio)
                 self._emitir(f"i32.const {offset}")
             return
+        
+        # --- ACCESO A ATRIBUTO (obj.attr) ---
+        if val == ".":
+            self._emitir(f"local.get ${nodo.izquierdo.valor}_{nodo.derecho.valor}")
+            return
 
         # --- VARIABLES / PARÁMETROS ---
         if nodo.uso in ["variable", "parametro"]:
             self._emitir(f"local.get ${val}")
-            return
-
-        # --- ACCESO A ATRIBUTO (obj.attr) ---
-        if val == ".":
-            self._emitir(f"local.get ${nodo.izquierdo.valor}_{nodo.derecho.valor}")
             return
 
         # --- CONVERSIÓN EXPLÍCITA todf ---
@@ -481,6 +480,11 @@ class generador_assembler:
                     else:
                         self._generar_expresion(arg)
                 self._emitir(f"call ${destino.valor}")
+            return
+
+        if val == "=":
+            self._generar_sentencia(nodo)
+            self._generar_expresion(nodo.izquierdo)
             return
 
         # --- OPERACIONES ARITMÉTICAS ---

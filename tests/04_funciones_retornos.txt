@@ -1,0 +1,17 @@
+program test_funciones
+    ushortint function sumar(ushortint p1, ushortint p2)
+        ushortint total;
+    BEGIN
+        total := p1 + p2;
+        ret total;
+    end;
+
+    ushortint r;
+BEGIN
+    r := sumar(10$us, 20$us);
+    pout(r);
+
+    {{control de error semantico de falta de parametros
+    r := sumar(10$us);
+    }}
+END

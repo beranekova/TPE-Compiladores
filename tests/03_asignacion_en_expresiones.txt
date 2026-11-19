@@ -1,0 +1,14 @@
+program test_asignacion_expresion
+    ushortint a, b, c;
+    doublef y;
+BEGIN
+    a := 5$us;
+    {{asignacion en expresion valida (solo constantes o variables)}}
+    b := c = 10$us + a;
+    pout(b);
+    pout(c);
+
+    y := 0.0;
+
+    {{b := c = y;}}
+END

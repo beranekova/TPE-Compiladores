@@ -1,0 +1,15 @@
+program test_error_tipos
+    ushortint u;
+    doublef d;
+BEGIN
+    u := 10$us;
+    d := 2.5;
+
+    d := d + u;
+    {{
+        correccion para que funcione correctamente el programa, conversion explicita
+        d := todf(u) + d;
+    }}
+
+    pout(d);
+END

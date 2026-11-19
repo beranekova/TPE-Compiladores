@@ -1,0 +1,10 @@
+program test_runtime_h
+    typedef nivel = [1$us, 15$us, 255$us];
+    nivel n;
+    ushortint x;
+BEGIN
+    x := 23$us;
+    {{asignacion invalida dinamica a un enumerado}}
+    n := x;
+    pout(n);
+END

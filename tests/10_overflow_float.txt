@@ -1,0 +1,6 @@
+program test_runtime_e
+    doublef a;
+BEGIN
+    a := 1.0d200 * 1.0d200;
+    pout(a);
+END

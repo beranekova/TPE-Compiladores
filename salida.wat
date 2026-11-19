@@ -7,19 +7,45 @@
   (data (i32.const 73) "ERROR DE EJECUCION (e): Overflow en producto de punto flotante (DOUBLEF)")
   (data (i32.const 145) "ERROR DE EJECUCION (h): Asignacion invalida fuera de rango en enumeracion")
   (data (i32.const 218) "ERROR DE EJECUCION (i): Recursion detectada en invocacion de funcion")
-  (func $main (export "main")
-  (local $x i32)
-  (local $y f64)
+  (global $rec_f (mut i32) (i32.const 0))
+  (func $f (param $n i32) (result i32)
+    (block $no_rec_1
+      global.get $rec_f
+      i32.eqz
+      br_if $no_rec_1
+      i32.const 218
+      i32.const 68
+      call $imprime
+      unreachable
+    )
     i32.const 1
-    local.set $x
-    local.get $x
-    call $imprime_i32
-    local.get $x
-    f64.convert_i32_u
-    local.set $y
-    local.get $y
-    call $imprime_f64
-    local.get $x
+    global.set $rec_f
+    (block $if_end_2
+      (block $if_else_3
+        local.get $n
+        i32.const 0
+        i32.gt_u
+        i32.eqz
+        br_if $if_else_3
+        local.get $n
+        i32.const 1
+        i32.sub
+        call $f
+        local.set $n
+        br $if_end_2
+      )
+    )
+    local.get $n
+    i32.const 0
+    global.set $rec_f
+    return
+  )
+  (func $main (export "main")
+  (local $r i32)
+    i32.const 2
+    call $f
+    local.set $r
+    local.get $r
     call $imprime_i32
   )
 )

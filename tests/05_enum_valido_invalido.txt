@@ -1,0 +1,10 @@
+program test_enum
+    typedef nivel = [1$us, 15$us, 255$us];
+    nivel n;
+BEGIN
+    n := 15$us;
+    pout(n);
+
+    {{asignacion invalida a enumerado, fuera de rango con constante
+    n := 23$us;}}
+END

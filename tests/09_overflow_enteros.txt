@@ -1,0 +1,7 @@
+program test_runtime_d
+    {{programa para chequeo de overflow en productos de enteros, > 255 (8 bits)}}
+    ushortint a;
+BEGIN
+    a := 20$us * 15$us;
+    pout(a);
+END

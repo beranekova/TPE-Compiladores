@@ -1,0 +1,15 @@
+program test_runtime_i
+    ushortint function f(ushortint n)
+    BEGIN
+        IF (n > 0$us)
+            begin
+                n := f(n - 1$us);
+            end
+        END_IF;
+        ret n;
+    end;
+    ushortint r;
+BEGIN
+    r := f(2$us);
+    pout(r);
+END

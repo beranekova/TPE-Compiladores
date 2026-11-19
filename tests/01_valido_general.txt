@@ -1,0 +1,15 @@
+program test_valido_general
+    ushortint a, b, res_us;
+    doublef x, y, res_df;
+
+BEGIN
+    a := 10$us;
+    b := 5$us;
+    res_us := a + b * 2$us - 4$us;
+    pout(res_us);
+
+    x := 2.5;
+    y := todf(a) + x;
+    res_df := y * 2.0;
+    pout(res_df);
+END

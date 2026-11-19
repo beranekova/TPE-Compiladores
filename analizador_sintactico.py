@@ -480,22 +480,25 @@ class analizador_sintactico(Parser):
         tipo_res = self._validar_asignacion(nodo_izq, nodo_der, ":=", p.lineno)
         return NodoArbol(valor=":=", izquierdo=nodo_izq, derecho=nodo_der, tipo=tipo_res)
 
-    @_('lado_izquierdo ASIGNACION_IGUAL expresion')
+    @_('lado_izquierdo ASIGNACION_IGUAL ID',
+       'lado_izquierdo ASIGNACION_IGUAL CTE_USHORTINT',
+       'lado_izquierdo ASIGNACION_IGUAL CTE_DOUBLEF')
     def asignacion_igual(self, p):
         nodo_izq = p.lado_izquierdo
-        nodo_der = p.expresion
 
-        es_id_o_constante = getattr(nodo_der, 'uso', None) in ["variable", "parametro", "constante"]
-        
-        if not es_id_o_constante and nodo_der.tipo != "ERROR":
-            self.reportar_error(
-                f"Error Semántico: En asignaciones con '=' dentro de expresiones, el lado derecho debe ser un identificador o constante, no un/a '{nodo_der.valor}'",
-                p.lineno
-            )
-            tipo_resultado = "ERROR"
-        else:
-            tipo_resultado = self._validar_asignacion(nodo_izq, nodo_der, "=", p.lineno)
+        if hasattr(p, 'ID'):
+            simbolo = self.tabla.buscar(p.ID)
+            if not simbolo:
+                self.reportar_error(f"Error semantico: la variable '{p.ID}' no fue declarada", p.lineno)
+                nodo_der = NodoArbol(valor=p.ID, tipo="ERROR", uso="ERROR")
+            else:
+                nodo_der = NodoArbol(valor=p.ID, tipo=simbolo["tipo"], uso=simbolo["uso"])
+        elif hasattr(p, 'CTE_USHORTINT'):
+            nodo_der = NodoArbol(valor=p.CTE_USHORTINT, tipo="USHORTINT", uso="constante")
+        else:  # CTE_DOUBLEF
+            nodo_der = NodoArbol(valor=p.CTE_DOUBLEF, tipo="DOUBLEF", uso="constante")
 
+        tipo_resultado = self._validar_asignacion(nodo_izq, nodo_der, "=", p.lineno)
         return NodoArbol(valor="=", izquierdo=nodo_izq, derecho=nodo_der, tipo=tipo_resultado)
     
     def _validar_asignacion(self, nodo_izq, nodo_der, operador, linea):
@@ -654,6 +657,10 @@ class analizador_sintactico(Parser):
     # ---------------- EXPRESIONES ARITMETICAS ----------------
 
     def _procesar_operacion_binaria(self, op, izq, der, linea):
+        if not isinstance(izq, NodoArbol):
+            izq = NodoArbol(valor="ERROR", tipo="ERROR")
+        if not isinstance(der, NodoArbol):
+            der = NodoArbol(valor="ERROR", tipo="ERROR")
         if "ERROR" in [izq.tipo, der.tipo]:
             return NodoArbol(valor=op, izquierdo=izq, derecho=der, tipo="ERROR")
 
@@ -1054,6 +1061,14 @@ class analizador_sintactico(Parser):
     @_('lado_izquierdo ASIGNACION_PUNTO "(" expresion ")"')
     def asignacion_igual(self, p):
         self.reportar_error(f"Error sintactico: asignacion invalida, debe ser '='. Linea {p.lineno}")
+        return ('ERROR_RECUPERADO',)
+    
+    @_('lado_izquierdo ASIGNACION_IGUAL error')
+    def asignacion_igual(self, p):
+        self.reportar_error(
+            "Error Sintáctico: El lado derecho de una asignación con '=' solo admite un identificador o constante.",
+            p.lineno
+        )
         return ('ERROR_RECUPERADO',)
 
     @_('lado_izquierdo ASIGNACION_IGUAL expresion')

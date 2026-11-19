@@ -1,0 +1,21 @@
+program test_control_anidado
+    ushortint i, acum;
+BEGIN
+    i := 1$us;
+    acum := 0$us;
+    repeat
+        begin
+            IF (i <= 3$us)
+                begin
+                    acum := acum + i;
+                end
+            ELSE
+                begin
+                    acum := acum + 10$us;
+                end
+            END_IF;
+            i := i + 1$us;
+        end
+    while (i <= 4$us);
+    pout(acum);
+END
